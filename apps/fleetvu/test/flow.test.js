@@ -134,6 +134,15 @@ test("support and issue triage name the manufacturer and the FleetVu address", a
   });
 });
 
+test("a unit can store more cameras than road and driver", async () => {
+  await withServer(async (base) => {
+    const names = ["Road facing", "Driver facing", "Left", "Right", "Rear", "Cargo", "Side door", "Hopper", "Blind spot"];
+    const created = await post(base, "/api/equipment", equipmentBody({ channels: names }));
+    assert.equal(created.status, 201);
+    assert.deepEqual(created.payload.equipment.channels.map((channel) => channel.label), names);
+  });
+});
+
 test("the copy instructions name one start command, port 4173, and the files to copy", async () => {
   const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
   assert.match(readme, /sh start\.sh/);

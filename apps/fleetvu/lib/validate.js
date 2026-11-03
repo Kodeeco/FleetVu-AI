@@ -59,9 +59,6 @@ export function validateChannels(raw) {
   if (!Array.isArray(raw) || raw.length === 0) {
     return { ok: false, error: "Add at least one camera channel." };
   }
-  if (raw.length > 8) {
-    return { ok: false, error: "FleetVu stores up to 8 channels on a unit." };
-  }
   const channels = [];
   for (const entry of raw) {
     const label = String(entry ?? "").trim();

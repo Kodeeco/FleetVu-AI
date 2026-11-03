@@ -28,6 +28,7 @@ function freshWizard() {
     assetName: "",
     model: "",
     channels: ["Road facing", "Driver facing"],
+    otherCamera: "",
     simNote: "",
     programmed: false,
     equipmentId: null,
@@ -383,11 +384,24 @@ function stepUnit() {
     field("Model", "model", wizard.model, "model", "Optional. Whatever is printed on the unit."),
     el("div", { class: "stack" }, [
       el("span", { class: "section-label" }, "Cameras"),
+      el("p", { class: "hint" }, "Road and driver are only a start. Add every camera on the unit."),
+      el("div", { class: "camera-picks" }, ["Left", "Right", "Rear", "Cargo"].map((name) =>
+        el("button", { type: "button", class: "secondary", "data-action": "add-quick-camera", "data-name": name }, name),
+      )),
+      el("div", { class: "row" }, [
+        el("input", {
+          id: "other-camera",
+          type: "text",
+          value: wizard.otherCamera,
+          "data-bind": "otherCamera",
+          placeholder: "Any other camera name",
+          "aria-label": "Any other camera name",
+        }),
+        el("button", { type: "button", class: "secondary", "data-action": "add-other-camera" }, "Add this name"),
+      ]),
       ...wizard.channels.map((channel, index) => el("div", { class: "row" }, [
         el("input", { id: `channel-${index}`, type: "text", value: channel, "data-channel": String(index), "aria-label": `Channel ${index + 1}` }),
-        wizard.channels.length > 1
-          ? el("button", { type: "button", class: "secondary", "data-action": "remove-channel", "data-index": String(index) }, "Remove")
-          : null,
+        el("button", { type: "button", class: "secondary", "data-action": "remove-channel", "data-index": String(index) }, "Remove"),
       ])),
       el("button", { type: "button", class: "secondary", "data-action": "add-channel" }, "Add channel"),
     ]),
@@ -809,6 +823,25 @@ async function onClick(event) {
   }
   if (action === "add-channel") {
     state.wizard.channels.push("");
+    render();
+    return;
+  }
+  if (action === "add-quick-camera") {
+    state.wizard.channels.push(button.dataset.name);
+    state.wizard.formError = "";
+    render();
+    return;
+  }
+  if (action === "add-other-camera") {
+    const name = state.wizard.otherCamera.trim();
+    if (!name) {
+      state.wizard.formError = "Type the camera name, then add it.";
+      render();
+      return;
+    }
+    state.wizard.channels.push(name);
+    state.wizard.otherCamera = "";
+    state.wizard.formError = "";
     render();
     return;
   }
