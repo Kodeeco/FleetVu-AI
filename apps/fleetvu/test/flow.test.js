@@ -134,6 +134,25 @@ test("support and issue triage name the manufacturer and the FleetVu address", a
   });
 });
 
+test("a blank vehicle name, model, and SIM note still save the unit", async () => {
+  await withServer(async (base) => {
+    const created = await post(base, "/api/equipment", equipmentBody({
+      assetName: "   ",
+      model: "",
+      simNote: "",
+      channels: ["Rear", "Cargo", "Side door", ""],
+    }));
+    assert.equal(created.status, 201);
+    assert.equal(created.payload.equipment.assetName, "HWN-88421");
+    assert.equal(created.payload.equipment.model, "");
+    assert.equal(created.payload.equipment.simNote, "");
+    assert.deepEqual(
+      created.payload.equipment.channels.map((channel) => channel.label),
+      ["Rear", "Cargo", "Side door"],
+    );
+  });
+});
+
 test("a unit can store more cameras than road and driver", async () => {
   await withServer(async (base) => {
     const names = ["Road facing", "Driver facing", "Left", "Right", "Rear", "Cargo", "Side door", "Hopper", "Blind spot"];

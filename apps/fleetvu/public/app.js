@@ -282,12 +282,12 @@ function wizardView() {
       const mode = index === wizard.step ? "now" : index < wizard.step ? "done" : "todo";
       return el("span", { "data-state": mode }, label);
     })),
-    wizard.formError ? el("p", { class: "error", role: "alert" }, wizard.formError) : null,
     wizard.step === 0 ? stepManufacturer() : null,
     wizard.step === 1 ? stepDeviceId() : null,
     wizard.step === 2 ? stepUnit() : null,
     wizard.step === 3 ? stepServer() : null,
     wizard.step === 4 ? stepVerify() : null,
+    wizard.formError ? el("p", { class: "error", id: "wizard-error", role: "alert" }, wizard.formError) : null,
     el("div", { class: "actions" }, [
       wizard.step > 0
         ? el("button", { type: "button", class: "secondary", "data-action": "wizard-back" }, "Back")
@@ -380,7 +380,7 @@ function locationChoice(location) {
 function stepUnit() {
   const wizard = state.wizard;
   return el("div", { class: "stack" }, [
-    field("Vehicle or asset name", "asset-name", wizard.assetName, "assetName", "The name you use for this vehicle"),
+    field("Vehicle or asset name", "asset-name", wizard.assetName, "assetName", "Optional. If you leave this blank, Tracking uses the device ID."),
     field("Model", "model", wizard.model, "model", "Optional. Whatever is printed on the unit."),
     el("div", { class: "stack" }, [
       el("span", { class: "section-label" }, "Cameras"),
@@ -566,6 +566,27 @@ async function reload() {
   state.bundle = await api("/api/state");
 }
 
+function readInput(id) {
+  const node = document.getElementById(id);
+  return node ? node.value : "";
+}
+
+function syncUnitFields() {
+  const wizard = state.wizard;
+  wizard.assetName = readInput("asset-name");
+  wizard.model = readInput("model");
+  wizard.simNote = readInput("sim-note");
+  wizard.otherCamera = readInput("other-camera");
+  document.querySelectorAll("[data-channel]").forEach((input) => {
+    const index = Number(input.dataset.channel);
+    if (Number.isInteger(index)) wizard.channels[index] = input.value;
+  });
+  const typedName = wizard.otherCamera.trim();
+  if (typedName) wizard.channels.push(typedName);
+  wizard.otherCamera = "";
+  wizard.channels = wizard.channels.map((channel) => String(channel ?? "").trim()).filter(Boolean);
+}
+
 async function wizardNext() {
   const wizard = state.wizard;
   wizard.formError = "";
@@ -608,18 +629,16 @@ async function wizardNext() {
     return;
   }
   if (wizard.step === 2) {
-    if (wizard.assetName.trim().length < 2) {
-      wizard.formError = "Name the vehicle or asset.";
+    syncUnitFields();
+    if (wizard.channels.length === 0) {
+      wizard.formError = "Add at least one camera.";
       render();
-      return;
-    }
-    if (!wizard.channels.some((channel) => channel.trim())) {
-      wizard.formError = "Name at least one camera channel.";
-      render();
+      document.getElementById("wizard-error")?.scrollIntoView({ block: "center" });
       return;
     }
     wizard.step = 3;
     render();
+    window.scrollTo(0, 0);
     return;
   }
   if (wizard.step === 3) {

@@ -137,10 +137,9 @@ export function createApp({ dataFile = defaultDataFile } = {}) {
     }
     const idCheck = validateDeviceId(body.deviceId);
     if (!idCheck.ok) throw httpError(400, idCheck.error);
-    const assetName = String(body.assetName || "").trim();
-    if (assetName.length < 2) throw httpError(400, "Name the vehicle or asset this unit is installed on.");
     const channels = validateChannels(body.channels);
     if (!channels.ok) throw httpError(400, channels.error);
+    const assetName = String(body.assetName || "").trim() || idCheck.deviceId;
 
     const key = bucketKey(manufacturer, otherName);
     const bucket = ensureBucket(data.learning, key, manufacturer);
