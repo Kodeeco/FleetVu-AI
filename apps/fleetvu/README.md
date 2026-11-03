@@ -6,19 +6,45 @@ A learning loop on the device-ID step remembers, per manufacturer, where that ID
 
 AI Support is available on every screen. Issues takes a connection or device report and returns what failed, the manufacturer, and a next step.
 
-## Run
+This directory is the whole app. It does not use the repository root, and it has no GitHub Pages, Vercel, or Netlify configuration. Copy it onto a server you control.
 
-```bash
-cd apps/fleetvu
-npm install
-npm start
+## Copy these files
+
+Put them in one directory on the server, keeping `lib/` and `public/` as subdirectories:
+
+- `package.json`
+- `package-lock.json`
+- `server.js`
+- `start.sh`
+- `README.md`
+- `lib/app.js`
+- `lib/assistant.js`
+- `lib/learning.js`
+- `lib/store.js`
+- `lib/targets.js`
+- `lib/validate.js`
+- `public/index.html`
+- `public/app.js`
+- `public/styles.css`
+- `public/favicon.svg`
+
+Do not copy `node_modules/` or `data/`. The server creates `data/` when the first unit is saved. `test/` is only for development.
+
+The server needs Node.js 20 or newer, which includes npm.
+
+## Start
+
+From the copied directory:
+
+```sh
+sh start.sh
 ```
 
-Open http://127.0.0.1:4173
+That is the only start command. The first run installs the production dependency. Later runs start immediately.
 
-```bash
-npm test
-```
+FleetVu listens on port **4173**. Open `http://<your-server>:4173`. Set `PORT` to use a different port: `PORT=8080 sh start.sh`.
+
+`npm test` runs the development checks. It is not part of starting the server.
 
 ## Placeholders
 

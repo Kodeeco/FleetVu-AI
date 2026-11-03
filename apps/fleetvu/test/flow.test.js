@@ -134,6 +134,32 @@ test("support and issue triage name the manufacturer and the FleetVu address", a
   });
 });
 
+test("the copy instructions name one start command, port 4173, and the files to copy", async () => {
+  const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
+  assert.match(readme, /sh start\.sh/);
+  assert.match(readme, /4173/);
+  const files = [
+    "package.json",
+    "package-lock.json",
+    "server.js",
+    "start.sh",
+    "lib/app.js",
+    "lib/assistant.js",
+    "lib/learning.js",
+    "lib/store.js",
+    "lib/targets.js",
+    "lib/validate.js",
+    "public/index.html",
+    "public/app.js",
+    "public/styles.css",
+    "public/favicon.svg",
+  ];
+  for (const file of files) {
+    assert.match(readme, new RegExp(file.replaceAll(".", "\\.").replaceAll("/", "\\/")));
+    await readFile(new URL(`../${file}`, import.meta.url));
+  }
+});
+
 test("the page calls this the learning loop and does not hard-code ingest ports", async () => {
   const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
   assert.match(source, /Learning loop/);

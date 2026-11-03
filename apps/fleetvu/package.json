@@ -5,7 +5,7 @@
   "type": "module",
   "description": "FleetVu — customers add video equipment and connect it to FleetVu.",
   "scripts": {
-    "start": "node server.js",
+    "start": "sh start.sh",
     "test": "node --test"
   },
   "engines": {
