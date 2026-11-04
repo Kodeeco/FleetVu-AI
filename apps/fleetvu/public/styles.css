@@ -117,6 +117,18 @@ textarea { min-height: 90px; resize: vertical; }
 .badge.bad { background: var(--bad-bg); color: var(--bad); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .primary { background: var(--pine); color: white; }
+.paths {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.bulk-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: white;
+}
 .click-next {
   justify-self: start;
   width: fit-content;

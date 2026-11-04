@@ -66,6 +66,11 @@ export function createApp({ dataFile = defaultDataFile } = {}) {
     res.status(201).json({ equipment: equipmentView(saved) });
   });
 
+  app.post("/api/equipment/bulk", (req, res) => {
+    const result = store.update((data) => importEquipmentFile(data, req.body?.csv));
+    res.status(201).json(result);
+  });
+
   app.patch("/api/equipment/:id", (req, res) => {
     const saved = store.update((data) => saveEquipment(data, req.params.id, req.body || {}));
     res.json({ equipment: equipmentView(saved) });
@@ -126,6 +131,147 @@ export function createApp({ dataFile = defaultDataFile } = {}) {
 
   return app;
 
+  function importEquipmentFile(data, csv) {
+    const table = parseCsv(csv);
+    if (table.length < 2) throw httpError(400, "The file needs a header row and at least one unit.");
+    const columns = mapBulkColumns(table[0]);
+    if (!columns) throw httpError(400, "The file needs columns for manufacturer, model, device ID, and IMEI.");
+    const errors = [];
+    const seen = new Set(data.equipment.map((item) => item.deviceId.toLowerCase()));
+    let added = 0;
+    for (let index = 1; index < table.length; index += 1) {
+      const row = table[index];
+      const rowNumber = index + 1;
+      const manufacturerName = cell(row, columns.manufacturer);
+      const model = cell(row, columns.model);
+      const deviceId = cell(row, columns.deviceId);
+      const imei = cell(row, columns.imei).replace(/[\s-]+/g, "");
+      const maker = parseBulkManufacturer(manufacturerName);
+      if (!maker) {
+        errors.push(`Row ${rowNumber} needs a manufacturer name.`);
+        continue;
+      }
+      if (!model) {
+        errors.push(`Row ${rowNumber} needs a model.`);
+        continue;
+      }
+      const idCheck = validateDeviceId(deviceId);
+      if (!idCheck.ok) {
+        errors.push(`Row ${rowNumber}: ${idCheck.error}`);
+        continue;
+      }
+      if (!/^\d{14,16}$/.test(imei)) {
+        errors.push(`Row ${rowNumber} needs an IMEI of 14 to 16 digits.`);
+        continue;
+      }
+      if (seen.has(idCheck.deviceId.toLowerCase())) {
+        errors.push(`Row ${rowNumber} repeats device ID ${idCheck.deviceId}.`);
+        continue;
+      }
+      const key = bucketKey(maker.manufacturer, maker.otherName);
+      const bucket = ensureBucket(data.learning, key, maker.manufacturer);
+      const location = ensureBulkLocation(bucket);
+      const now = new Date().toISOString();
+      data.equipment.push({
+        id: crypto.randomUUID(),
+        manufacturer: maker.manufacturer,
+        otherName: maker.otherName,
+        deviceId: idCheck.deviceId,
+        locationId: location.id,
+        locationLabel: location.label,
+        learningKey: key,
+        assetName: idCheck.deviceId,
+        model,
+        channels: [],
+        simNote: "",
+        imei,
+        connectTarget: snapshotTarget(maker.manufacturer),
+        updatedAt: now,
+        status: "awaiting_connection",
+        createdAt: now,
+        lastCheck: null,
+      });
+      seen.add(idCheck.deviceId.toLowerCase());
+      added += 1;
+    }
+    return { added, skipped: errors.length, errors: errors.slice(0, 8) };
+  }
+
+  function cell(row, index) {
+    return String(row[index] ?? "").trim();
+  }
+
+  function parseBulkManufacturer(name) {
+    const value = String(name || "").trim();
+    const lower = value.toLowerCase();
+    if (lower === "howen") return { manufacturer: "howen", otherName: "" };
+    if (lower === "stonkam") return { manufacturer: "stonkam", otherName: "" };
+    if (value.length < 2) return null;
+    return { manufacturer: "other", otherName: value };
+  }
+
+  function ensureBulkLocation(bucket) {
+    let location = bucket.locations.find((item) => item.id === "bulk-file");
+    if (!location) {
+      location = {
+        id: "bulk-file",
+        label: "Uploaded file",
+        detail: "The device ID came from a file the customer uploaded.",
+        origin: "bulk",
+        successes: 0,
+        failures: 0,
+        attempts: [],
+      };
+      bucket.locations.push(location);
+    }
+    return location;
+  }
+
+  function mapBulkColumns(header) {
+    const columns = {};
+    header.forEach((name, index) => {
+      const key = String(name || "").trim().toLowerCase().replace(/[_-]+/g, " ");
+      if (/manufacturer|maker|company/.test(key)) columns.manufacturer = index;
+      else if (/model/.test(key)) columns.model = index;
+      else if (/device/.test(key) || key === "id") columns.deviceId = index;
+      else if (/imei/.test(key)) columns.imei = index;
+    });
+    if (["manufacturer", "model", "deviceId", "imei"].every((key) => Number.isInteger(columns[key]))) return columns;
+    return null;
+  }
+
+  function parseCsv(raw) {
+    const text = String(raw || "").replace(/^\uFEFF/, "");
+    const rows = [];
+    let row = [];
+    let value = "";
+    let quoted = false;
+    for (let index = 0; index < text.length; index += 1) {
+      const char = text[index];
+      if (quoted) {
+        if (char === '"') {
+          if (text[index + 1] === '"') {
+            value += '"';
+            index += 1;
+          } else quoted = false;
+        } else value += char;
+      } else if (char === '"') quoted = true;
+      else if (char === ",") {
+        row.push(value);
+        value = "";
+      } else if (char === "\n" || char === "\r") {
+        if (char === "\r" && text[index + 1] === "\n") index += 1;
+        row.push(value);
+        value = "";
+        if (row.some((cell) => cell.trim())) rows.push(row);
+        row = [];
+      } else value += char;
+    }
+    row.push(value);
+    if (row.some((cell) => cell.trim())) rows.push(row);
+    return rows;
+  }
+
   function saveEquipment(data, id, body) {
     const manufacturer = body.manufacturer;
     if (!["howen", "stonkam", "other"].includes(manufacturer)) {
@@ -160,6 +306,7 @@ export function createApp({ dataFile = defaultDataFile } = {}) {
       model: String(body.model || "").trim(),
       channels: channels.channels,
       simNote: String(body.simNote || "").trim(),
+      imei: String(body.imei || "").trim(),
       connectTarget: snapshotTarget(manufacturer),
       updatedAt: now,
     };

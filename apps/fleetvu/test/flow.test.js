@@ -153,6 +153,31 @@ test("a blank vehicle name, model, and SIM note still save the unit", async () =
   });
 });
 
+test("a CSV file adds many units in one step", async () => {
+  await withServer(async (base) => {
+    const csv = [
+      "manufacturer,model,device id,imei",
+      "Howen,ME41,HWN-BULK-01,359876543210011",
+      "Stonkam,SV-1,SK-BULK-02,359876543210022",
+      "Acme Vision,X9,ACME-BULK-03,359876543210033",
+      "Howen,ME41,test,359876543210044",
+    ].join("\n");
+    const created = await post(base, "/api/equipment/bulk", { csv });
+    assert.equal(created.status, 201);
+    assert.equal(created.payload.added, 3);
+    assert.equal(created.payload.skipped, 1);
+    const state = await fetch(`${base}/api/state`).then((response) => response.json());
+    const byId = Object.fromEntries(state.equipment.map((item) => [item.deviceId, item]));
+    assert.equal(byId["HWN-BULK-01"].manufacturer, "howen");
+    assert.equal(byId["HWN-BULK-01"].model, "ME41");
+    assert.equal(byId["HWN-BULK-01"].imei, "359876543210011");
+    assert.equal(byId["SK-BULK-02"].manufacturer, "stonkam");
+    assert.equal(byId["ACME-BULK-03"].manufacturer, "other");
+    assert.equal(byId["ACME-BULK-03"].otherName, "Acme Vision");
+    assert.equal(state.learning.howen.locations.some((location) => location.label === "Uploaded file"), false);
+  });
+});
+
 test("a unit can store more cameras than road and driver", async () => {
   await withServer(async (base) => {
     const names = ["Road facing", "Driver facing", "Left", "Right", "Rear", "Cargo", "Side door", "Hopper", "Blind spot"];

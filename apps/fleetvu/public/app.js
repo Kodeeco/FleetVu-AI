@@ -6,6 +6,7 @@ const state = {
   bundle: null,
   loadError: "",
   guide: freshGuide(),
+  bulk: { busy: false, message: "", error: "", fileName: "", csv: "" },
   issue: freshIssue(),
   chat: [
     {
@@ -251,15 +252,20 @@ function unitDetail(item) {
   const cameras = item.channels.map((channel) => channel.label).join(", ");
   return el("article", { class: "card stack", style: "margin-top:14px;padding:14px" }, [
     connected
-      ? el("div", { class: "stack" }, [
-          el("p", { class: "ai-line" }, "This unit is connected. The next step is to add another unit."),
-          el("a", { class: "primary click-next", href: "#/add" }, "Click here. Next step."),
+      ? el("div", { class: "paths" }, [
+          el("div", { class: "stack bulk-card" }, [
+            el("p", { class: "section-label" }, "One unit"),
+            el("p", { class: "ai-line" }, "This unit is connected. The next step is to add another unit."),
+            el("a", { class: "primary click-next", href: "#/add" }, "Click here. Next step."),
+          ]),
+          bulkCard(),
         ])
       : null,
     el("h2", {}, item.assetName),
     el("p", {}, item.manufacturerLabel),
     el("p", {}, `Device ID ${item.deviceId}.`),
-    el("p", {}, `Cameras: ${cameras}.`),
+    el("p", {}, cameras ? `Cameras: ${cameras}.` : "No cameras listed yet."),
+    item.imei ? el("p", {}, `IMEI ${item.imei}.`) : null,
     el("div", { class: "row" }, [
       el("span", { class: statusClass(item.status) }, statusLabel(item.status)),
     ]),
@@ -274,17 +280,42 @@ function unitDetail(item) {
 function guideView() {
   const guide = state.guide;
   const field = guideField();
-  return el("section", { class: "panel stack" }, [
-    el("form", { id: "guide-form", class: "stack" }, [
-      el("p", { class: "ai-line" }, guideSentence()),
-      field,
-      guide.error ? el("p", { class: "error", role: "alert" }, guide.error) : null,
-      el("button", {
-        class: "primary click-next",
-        type: "submit",
-        ...(guide.busy ? { disabled: "true" } : {}),
-      }, "Click here. Next step."),
+  return el("section", { class: "panel" }, [
+    el("h1", {}, "Add equipment"),
+    el("div", { class: "paths" }, [
+      el("div", { class: "stack bulk-card" }, [
+        el("p", { class: "section-label" }, "One unit"),
+        el("form", { id: "guide-form", class: "stack" }, [
+          el("p", { class: "ai-line" }, guideSentence()),
+          field,
+          guide.error ? el("p", { class: "error", role: "alert" }, guide.error) : null,
+          el("button", {
+            class: "primary click-next",
+            type: "submit",
+            ...(guide.busy ? { disabled: "true" } : {}),
+          }, "Click here. Next step."),
+        ]),
+      ]),
+      bulkCard(),
     ]),
+  ]);
+}
+
+function bulkCard() {
+  const bulk = state.bulk;
+  return el("div", { class: "stack bulk-card" }, [
+    el("p", { class: "section-label" }, "Many units"),
+    el("p", { class: "ai-line" }, "Upload a CSV to add many units at once. Columns: manufacturer, model, device ID, and IMEI."),
+    el("input", { id: "bulk-file", type: "file", accept: ".csv,text/csv", "aria-label": "CSV file of units" }),
+    bulk.fileName ? el("p", { class: "hint" }, bulk.fileName) : null,
+    el("button", {
+      type: "button",
+      class: "primary click-next",
+      "data-action": "bulk-upload",
+      ...(bulk.busy ? { disabled: "true" } : {}),
+    }, "Add these units"),
+    bulk.message ? el("p", { role: "status" }, bulk.message) : null,
+    bulk.error ? el("p", { class: "error", role: "alert" }, bulk.error) : null,
   ]);
 }
 
@@ -618,6 +649,39 @@ function readInput(id) {
   return node ? node.value : "";
 }
 
+async function uploadBulk() {
+  const bulk = state.bulk;
+  if (!bulk.csv) {
+    bulk.error = "Choose a CSV file first.";
+    bulk.message = "";
+    render();
+    return;
+  }
+  bulk.busy = true;
+  bulk.error = "";
+  render();
+  try {
+    const result = await api("/api/equipment/bulk", {
+      method: "POST",
+      body: JSON.stringify({ csv: bulk.csv }),
+    });
+    const units = result.added === 1 ? "unit" : "units";
+    bulk.message = `Added ${result.added} ${units}.`;
+    if (result.skipped) {
+      const rows = result.skipped === 1 ? "row was" : "rows were";
+      bulk.message += ` ${result.skipped} ${rows} skipped.`;
+    }
+    bulk.error = result.errors?.[0] || "";
+    await reload();
+  } catch (error) {
+    bulk.error = error.message;
+    bulk.message = "";
+  } finally {
+    bulk.busy = false;
+    render();
+  }
+}
+
 async function ask(text) {
   const question = text.trim();
   if (!question) return;
@@ -692,6 +756,17 @@ function onChange(event) {
     return;
   }
   if (bind === "issueSymptom") state.issue.symptom = node.value;
+  if (node.id === "bulk-file") {
+    const file = node.files?.[0];
+    if (!file) return;
+    file.text().then((csv) => {
+      state.bulk.csv = csv;
+      state.bulk.fileName = file.name;
+      state.bulk.error = "";
+      state.bulk.message = "";
+      render();
+    });
+  }
 }
 
 async function onClick(event) {
@@ -699,6 +774,7 @@ async function onClick(event) {
   if (!button) return;
   const action = button.dataset.action;
   if (action === "submit-issue") return submitIssue();
+  if (action === "bulk-upload") return uploadBulk();
   if (action === "select-unit") {
     location.hash = `#/equipment/${encodeURIComponent(button.dataset.id)}`;
     return;

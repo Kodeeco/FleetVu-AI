@@ -1,6 +1,6 @@
 # FleetVu
 
-Customers add their own video equipment and connect it to FleetVu. Add equipment is one instruction at a time, then Next step. It covers Howen, Stonkam, and any other manufacturer. FleetVu shows the server address and ports to type on the device. The customer copies the device ID from the unit.
+Customers add their own video equipment and connect it to FleetVu. Add equipment walks through one unit at a time, then Next step. A CSV upload next to that walkthrough adds many units in one step. The columns are manufacturer, model, device ID, and IMEI. It covers Howen, Stonkam, and any other manufacturer. FleetVu shows the server address and ports to type on the device. The customer copies the device ID from the unit.
 
 FleetVu remembers, for each manufacturer, where that ID was found and whether the unit then connected. Places that already connected are mentioned first. The memory is stored in this app.
 

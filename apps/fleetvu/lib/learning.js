@@ -157,7 +157,7 @@ export function recordAttempt(location, attempt) {
 export function publicLearning(learning) {
   const out = {};
   for (const [key, bucket] of Object.entries(learning.manufacturers)) {
-    out[key] = { locations: rankLocations(bucket.locations) };
+    out[key] = { locations: rankLocations(bucket.locations.filter((location) => location.origin !== "bulk")) };
   }
   return out;
 }
