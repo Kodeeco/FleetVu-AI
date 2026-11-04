@@ -295,7 +295,7 @@ function welcomePage() {
     link: absoluteHash(joinHash),
   }) : null;
   const cards = [
-    el("p", { class: "mail-note" }, state.mail.sendingNote || "welcome@fleetvulive.com is an active mailbox. Sending waits on cPanel SMTP settings, so these messages are shown here."),
+    el("p", { class: "mail-note" }, state.mail.sendingNote || "welcome@fleetvulive.com is an active mailbox. Outgoing SMTP is mail.fleetvulive.com, port 465, SSL. No password is stored, so these messages are shown here."),
     connectedCard,
     welcomeCard,
   ];

@@ -7,6 +7,7 @@ import { bucketKey, ensureBucket, publicLearning, rankLocations, recordAttempt, 
 import { createStore } from "./store.js";
 import { publicTargets, targetFor } from "./targets.js";
 import { displayManufacturer, validateChannels, validateDeviceId } from "./validate.js";
+import { outgoingMail, sendingNote } from "./mail.js";
 import { buildUnitsTemplate, readUnitRows } from "./xlsx.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -453,9 +454,14 @@ export function createApp({ dataFile = defaultDataFile } = {}) {
     const connectedCount = units.filter((item) => item.status === "connected").length;
     return {
       token: invite.token,
-      from: "welcome@fleetvulive.com",
+      from: outgoingMail.from,
       mailbox: "active",
-      sendingNote: "welcome@fleetvulive.com is an active mailbox. Sending waits on cPanel SMTP settings, so these messages are shown here.",
+      smtp: {
+        host: outgoingMail.host,
+        port: outgoingMail.port,
+        ssl: outgoingMail.ssl,
+      },
+      sendingNote,
       submitted: units.length > 0,
       unitCount: units.length,
       connectedCount,

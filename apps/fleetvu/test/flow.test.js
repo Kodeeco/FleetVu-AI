@@ -200,6 +200,7 @@ test("the copy instructions name one start command, port 4173, and the files to 
     "lib/app.js",
     "lib/assistant.js",
     "lib/learning.js",
+    "lib/mail.js",
     "lib/store.js",
     "lib/targets.js",
     "lib/validate.js",
@@ -228,8 +229,9 @@ test("each onboard step uses Next step and does not hard-code ingest ports", asy
   assert.match(source, /All units are connected/);
   assert.match(source, /fleetvu-logo-wordmark\.png/);
   assert.match(source, /welcome@fleetvulive\.com/);
-  assert.match(source, /Sending waits on cPanel SMTP settings/);
-  assert.doesNotMatch(source, /connected@fleetvulive\.com|smtp\.fleetvulive|SMTP_HOST|587/);
+  assert.match(source, /mail\.fleetvulive\.com, port 465, SSL/);
+  assert.match(source, /No password is stored/);
+  assert.doesNotMatch(source, /connected@fleetvulive\.com|SMTP_HOST|SMTP_PASS|998/);
   assert.doesNotMatch(source, /forensic|keycode|Vault/i);
   const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
   assert.match(html, /FleetVu/);
@@ -245,8 +247,12 @@ test("the welcome email link accepts an Excel template and the connected email w
     assert.match(mail.token, /^[a-f0-9]{32}$/);
     assert.equal(mail.from, "welcome@fleetvulive.com");
     assert.equal(mail.mailbox, "active");
+    assert.deepEqual(mail.smtp, { host: "mail.fleetvulive.com", port: 465, ssl: true });
+    assert.equal("password" in mail.smtp, false);
+    assert.equal(JSON.stringify(mail.smtp).includes("password"), false);
+    assert.equal(JSON.stringify(mail).includes("998"), false);
     assert.match(mail.sendingNote, /active mailbox/);
-    assert.match(mail.sendingNote, /cPanel SMTP settings/);
+    assert.match(mail.sendingNote, /port 465, SSL/);
     assert.equal(mail.connectedFrom, undefined);
     assert.equal(mail.allConnected, false);
 

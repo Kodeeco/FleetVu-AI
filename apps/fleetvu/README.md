@@ -1,6 +1,6 @@
 # FleetVu
 
-Customers add their own video equipment and connect it to FleetVu. The front door is a welcome email. From is welcome@fleetvulive.com, which is an active mailbox. Sending waits on cPanel SMTP settings, so the messages are shown on screen until then. The token link opens a page with an Excel template. The template walks through manufacturer, model, device ID, and IMEI. Submit creates the units. When every unit is connected, a connected email opens login, where they set credentials and assign managers, admins, and superadmins to regions and locations. The app stays closed until then. Add equipment still walks through one unit at a time, then Next step. A CSV upload next to that walkthrough also adds many units. It covers Howen, Stonkam, and any other manufacturer. FleetVu shows the server address and ports to type on the device. The customer copies the device ID from the unit.
+Customers add their own video equipment and connect it to FleetVu. The front door is a welcome email. From is welcome@fleetvulive.com, which is an active mailbox. Outgoing SMTP is mail.fleetvulive.com, port 465, SSL. No password is stored, so the messages are shown on screen. The token link opens a page with an Excel template. The template walks through manufacturer, model, device ID, and IMEI. Submit creates the units. When every unit is connected, a connected email opens login, where they set credentials and assign managers, admins, and superadmins to regions and locations. The app stays closed until then. Add equipment still walks through one unit at a time, then Next step. A CSV upload next to that walkthrough also adds many units. It covers Howen, Stonkam, and any other manufacturer. FleetVu shows the server address and ports to type on the device. The customer copies the device ID from the unit.
 
 FleetVu remembers, for each manufacturer, where that ID was found and whether the unit then connected. Places that already connected are mentioned first. The memory is stored in this app.
 
@@ -20,6 +20,7 @@ Put them in one directory on the server, keeping `lib/` and `public/` as subdire
 - `lib/app.js`
 - `lib/assistant.js`
 - `lib/learning.js`
+- `lib/mail.js`
 - `lib/store.js`
 - `lib/targets.js`
 - `lib/validate.js`
