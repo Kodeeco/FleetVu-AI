@@ -88,7 +88,7 @@ export function createApp({ dataFile = defaultDataFile } = {}) {
     });
     res.status(201).json({
       registration,
-      note: "FleetVu's local ingest accepted this device ID. Run Check connection to see if it matches. This stand-in is here because the published address is a placeholder.",
+      note: "Recorded a practice connection for this device ID. Check again to confirm it matches. This is only so you can try the steps on this computer.",
     });
   });
 
@@ -218,8 +218,8 @@ export function createApp({ dataFile = defaultDataFile } = {}) {
       connected,
       location: rankLocations(bucket.locations).find((item) => item.id === location.id),
       message: connected
-        ? `Connected. FleetVu matched device ID ${equipment.deviceId}. That result is stored for ${location.label}.`
-        : `No connection yet. Nothing has registered as device ID ${equipment.deviceId}. That miss is stored for ${location.label}.`,
+        ? `Connected. FleetVu matched device ID ${equipment.deviceId}.`
+        : `Not connected yet. FleetVu has not heard from device ID ${equipment.deviceId}.`,
     };
   }
 

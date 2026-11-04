@@ -1,41 +1,37 @@
 const appEl = document.querySelector("#app");
-const STEP_LABELS = ["Manufacturer", "Device ID", "The unit", "Point it at FleetVu", "Verify"];
 
 const state = {
   route: "tracking",
   selectedId: null,
   bundle: null,
   loadError: "",
-  wizard: freshWizard(),
+  guide: freshGuide(),
   issue: freshIssue(),
   chat: [
     {
       role: "assistant",
-      text: "Ask how to find a device ID, which FleetVu address to type on the unit, or what to do when a connection fails.",
+      text: "Ask where to find a device ID, which FleetVu address to type on the unit, or what to do when a connection fails.",
     },
   ],
   chatBusy: false,
 };
 
-function freshWizard() {
+function freshGuide() {
   return {
-    step: 0,
-    manufacturer: "howen",
+    phase: "start",
+    makerText: "",
+    manufacturer: "",
     otherName: "",
     deviceId: "",
-    locationChoice: "",
+    locationText: "",
+    locationId: "",
     customLocation: "",
     assetName: "",
-    model: "",
-    channels: ["Road facing", "Driver facing"],
-    otherCamera: "",
-    simNote: "",
-    programmed: false,
+    camerasText: "Road, Driver, Left, Right, Rear, Cargo",
+    channels: [],
     equipmentId: null,
-    checkMessage: "",
-    checkOk: null,
     busy: false,
-    formError: "",
+    error: "",
   };
 }
 
@@ -105,10 +101,10 @@ function selectedEquipment() {
 function supportContext() {
   if (state.route === "add") {
     return {
-      screen: "wizard",
-      step: state.wizard.step,
-      manufacturer: state.wizard.manufacturer,
-      otherName: state.wizard.otherName,
+      screen: "walkthrough",
+      phase: state.guide.phase,
+      manufacturer: state.guide.manufacturer,
+      otherName: state.guide.otherName,
     };
   }
   const equipment = selectedEquipment();
@@ -128,17 +124,6 @@ function supportContext() {
   };
 }
 
-function suggestions() {
-  if (state.route === "add" && state.wizard.step === 1) {
-    return ["Where do I find the device ID?", "What does the learning loop store?"];
-  }
-  if (state.route === "add" && state.wizard.step >= 3) {
-    return ["Which server address do I type?", "Can I use my own server?"];
-  }
-  if (state.route === "issues") return ["The unit will not connect", "Where do I find the device ID?"];
-  return ["Where do I find the device ID?", "Which server address do I type?"];
-}
-
 function parseHash() {
   const parts = (location.hash.replace(/^#/, "") || "/tracking").split("/").filter(Boolean);
   if (parts[0] === "add") return { route: "add", selectedId: state.selectedId };
@@ -156,17 +141,22 @@ function render() {
   if (!next) return;
   next.focus();
   if (typeof caret === "number" && next.setSelectionRange) {
-    try { next.setSelectionRange(caret, caret); } catch { /* number inputs and buttons */ }
+    try { next.setSelectionRange(caret, caret); } catch { /* buttons and readonly fields */ }
   }
 }
 
+function hideSidePanel() {
+  if (state.route === "add") return true;
+  const selected = selectedEquipment();
+  return state.route === "tracking" && selected?.status === "connected";
+}
+
 function shell() {
+  const panels = [el("main", {}, [state.loadError ? el("p", { class: "error" }, state.loadError) : viewMain()])];
+  if (!hideSidePanel()) panels.push(aiPanel());
   return el("div", {}, [
     header(),
-    el("div", { class: "layout" }, [
-      el("main", {}, [state.loadError ? el("p", { class: "error" }, state.loadError) : viewMain()]),
-      aiPanel(),
-    ]),
+    el("div", { class: state.route === "add" ? "layout layout-guide" : hideSidePanel() ? "layout layout-wide" : "layout" }, panels),
   ]);
 }
 
@@ -190,7 +180,7 @@ function header() {
 
 function viewMain() {
   if (!state.bundle) return el("section", { class: "panel" }, "Loading FleetVu…");
-  if (state.route === "add") return wizardView();
+  if (state.route === "add") return guideView();
   if (state.route === "issues") return issuesView();
   return trackingView();
 }
@@ -200,16 +190,19 @@ function trackingView() {
   const connected = equipment.filter((item) => item.status === "connected");
   const waiting = equipment.filter((item) => item.status !== "connected");
   const selected = selectedEquipment();
+  const onConnectedUnit = selected?.status === "connected";
   return el("section", { class: "panel" }, [
     el("div", { class: "panel-head" }, [
       el("div", {}, [
         el("h1", {}, "Tracking"),
-        el("p", { class: "lede" }, "Units that have registered with FleetVu show up here. The device ID is how a registration is matched."),
+        el("p", { class: "lede" }, onConnectedUnit
+          ? "This unit is connected."
+          : "Units that have registered with FleetVu show up here. The device ID is how a registration is matched."),
       ]),
-      el("a", { class: "primary", href: "#/add" }, "Add equipment"),
+      onConnectedUnit ? null : el("a", { class: "primary", href: "#/add" }, "Add equipment"),
     ]),
     equipment.length === 0
-      ? el("div", { class: "callout" }, "Nothing is connected yet. Add a Howen, Stonkam, or other unit and point it at the address FleetVu gives you.")
+      ? el("div", { class: "callout" }, "Nothing is connected yet. Add a unit and I will walk you through it.")
       : el("div", { class: "stack" }, [
           unitGroup("Connected", connected, "No unit has connected yet."),
           unitGroup("Not connected yet", waiting, "No units are waiting."),
@@ -243,8 +236,8 @@ function unitCard(item) {
 
 function statusLabel(status) {
   if (status === "connected") return "Connected";
-  if (status === "not_connected") return "Check did not match";
-  return "Waiting for a registration";
+  if (status === "not_connected") return "Not connected yet";
+  return "Waiting to connect";
 }
 
 function statusClass(status) {
@@ -254,206 +247,271 @@ function statusClass(status) {
 }
 
 function unitDetail(item) {
-  const ports = item.connectTarget.ports.map((port) => `${port.label} ${port.number}`).join(", ");
+  const connected = item.status === "connected";
+  const cameras = item.channels.map((channel) => channel.label).join(", ");
   return el("article", { class: "card stack", style: "margin-top:14px;padding:14px" }, [
+    connected
+      ? el("div", { class: "stack" }, [
+          el("p", { class: "ai-line" }, "This unit is connected. Click here to add another unit."),
+          el("a", { class: "primary pulse", href: "#/add" }, "Click here"),
+        ])
+      : null,
     el("h2", {}, item.assetName),
-    el("p", {}, `${item.manufacturerLabel}${item.model ? ` · ${item.model}` : ""}`),
-    el("p", {}, `Device ID ${item.deviceId}. Found at: ${item.locationLabel}.`),
-    el("p", { class: "muted" }, `FleetVu address ${item.connectTarget.address}. ${ports}.`),
-    el("p", { class: "hint" }, item.connectTarget.notice),
+    el("p", {}, item.manufacturerLabel),
+    el("p", {}, `Device ID ${item.deviceId}.`),
+    el("p", {}, `Cameras: ${cameras}.`),
     el("div", { class: "row" }, [
       el("span", { class: statusClass(item.status) }, statusLabel(item.status)),
-      ...item.channels.map((channel) => el("span", { class: "badge" }, channel.label)),
     ]),
-    el("div", { class: "row" }, [
-      el("a", { class: "secondary", href: "#/issues", "data-action": "report-unit", "data-id": item.id }, "Report a problem"),
-    ]),
+    connected
+      ? null
+      : el("div", { class: "row" }, [
+          el("a", { class: "secondary", href: "#/issues", "data-action": "report-unit", "data-id": item.id }, "Report a problem"),
+        ]),
   ]);
 }
 
-function wizardView() {
-  const wizard = state.wizard;
+function guideView() {
+  const guide = state.guide;
+  const field = guideField();
   return el("section", { class: "panel stack" }, [
-    el("div", {}, [
-      el("h1", {}, "Add equipment"),
-      el("p", { class: "lede" }, "FleetVu gives you the server address and ports. You copy the device ID from the unit."),
-    ]),
-    el("div", { class: "steps", "aria-label": "Wizard steps" }, STEP_LABELS.map((label, index) => {
-      const mode = index === wizard.step ? "now" : index < wizard.step ? "done" : "todo";
-      return el("span", { "data-state": mode }, label);
-    })),
-    wizard.step === 0 ? stepManufacturer() : null,
-    wizard.step === 1 ? stepDeviceId() : null,
-    wizard.step === 2 ? stepUnit() : null,
-    wizard.step === 3 ? stepServer() : null,
-    wizard.step === 4 ? stepVerify() : null,
-    wizard.formError ? el("p", { class: "error", id: "wizard-error", role: "alert" }, wizard.formError) : null,
-    el("div", { class: "actions" }, [
-      wizard.step > 0
-        ? el("button", { type: "button", class: "secondary", "data-action": "wizard-back" }, "Back")
-        : el("span", {}),
-      wizard.step < 4
-        ? el("button", { type: "button", class: "primary", "data-action": "wizard-next", ...(wizard.busy ? { disabled: "true" } : {}) }, wizard.step === 3 ? "Save and verify" : "Continue")
-        : el("button", { type: "button", class: "secondary", "data-action": "wizard-reset" }, "Add another unit"),
+    el("form", { id: "guide-form", class: "stack" }, [
+      el("p", { class: "ai-line" }, guideSentence()),
+      field,
+      guide.error ? el("p", { class: "error", role: "alert" }, guide.error) : null,
+      el("button", {
+        class: "primary pulse",
+        type: "submit",
+        ...(guide.busy ? { disabled: "true" } : {}),
+      }, "Click here"),
     ]),
   ]);
 }
 
-function stepManufacturer() {
-  const wizard = state.wizard;
-  return el("fieldset", { class: "stack" }, [
-    el("legend", {}, "Which manufacturer made this unit?"),
-    manufacturerChoice("howen", "Howen", "Mobile DVR and camera recorders."),
-    manufacturerChoice("stonkam", "Stonkam", "Mobile DVR and camera recorders."),
-    manufacturerChoice("other", "Another manufacturer", "Any other video unit that can register to a server."),
-    wizard.manufacturer === "other"
-      ? field("Manufacturer name", "other-name", wizard.otherName, "otherName", "As printed on the unit")
-      : null,
-  ]);
+function guideSentence() {
+  const guide = state.guide;
+  const maker = displayLabel(guide.manufacturer, guide.otherName);
+  if (guide.phase === "start") return "Click here to name the company that made this camera unit.";
+  if (guide.phase === "maker") return "Type Howen, Stonkam, or the company name printed on the unit, then click here.";
+  if (guide.phase === "device-id") return idSentence();
+  if (guide.phase === "found") return `Type where you found that ID, such as the sticker or the device menu, then click here. I will remember it for the next ${maker} unit.`;
+  if (guide.phase === "vehicle") return "Type what you call this vehicle, or leave it blank, then click here. A blank name uses the device ID.";
+  if (guide.phase === "cameras") return "Type every camera, separated by commas. Road, Driver, Left, Right, Rear, Cargo, or any other name. Then click here.";
+  if (guide.phase === "server") return serverSentence();
+  if (guide.phase === "check") return `Click here and I will look for device ID ${guide.deviceId}.`;
+  return `This computer is not the live FleetVu server, so a unit in a truck cannot reach it. Click here to record a practice connection for ${guide.deviceId} and check again. I will not invent an ID.`;
 }
 
-function manufacturerChoice(value, title, detail) {
-  return el("label", { class: "choice" }, [
-    el("input", {
-      type: "radio",
-      name: "manufacturer",
-      value,
-      "data-bind": "manufacturer",
-      ...(state.wizard.manufacturer === value ? { checked: "checked" } : {}),
-    }),
-    el("span", {}, [el("strong", {}, title), el("small", {}, detail)]),
-  ]);
+function idSentence() {
+  const guide = state.guide;
+  const maker = displayLabel(guide.manufacturer, guide.otherName);
+  const locations = locationsFor(guide.manufacturer, guide.otherName);
+  const worked = locations.find((location) => location.successes > 0);
+  const lead = worked
+    ? `On a ${maker} unit, start at ${worked.label}. A unit already connected when the ID was found there.`
+    : `On a ${maker} unit, look at the sticker and in the device menu.`;
+  const detail = String(locations[0]?.detail || "").replace(/^Best guess, not a confirmed location\.\s*/i, "");
+  return `${lead} ${detail} Paste that ID, then click here. Do not invent one.`;
 }
 
-function stepDeviceId() {
-  const wizard = state.wizard;
-  const locations = locationsFor(wizard.manufacturer, wizard.otherName);
-  const anySuccess = locations.some((location) => location.successes > 0);
-  return el("div", { class: "stack" }, [
-    el("div", { class: "callout" }, [
-      el("strong", {}, "Learning loop"),
-      el("p", {}, "FleetVu remembers, for this manufacturer, where a device ID was found and whether that ID then connected. Places that already led to a connection are listed first. This is stored memory in FleetVu, not a separate learning service."),
-      el("p", {}, anySuccess
-        ? "Start with a location that already connected. If you found the ID somewhere else, say so."
-        : "No connection has confirmed a place yet. The best guess is the sticker and the device menu. Tell FleetVu where you actually found this ID."),
-    ]),
-    el("div", { class: "choices", role: "radiogroup", "aria-label": "Where did you find the device ID?" }, [
-      ...locations.map((location) => locationChoice(location)),
-      el("label", { class: "choice" }, [
-        el("input", {
-          type: "radio",
-          name: "location",
-          value: "new",
-          "data-bind": "locationChoice",
-          ...(wizard.locationChoice === "new" ? { checked: "checked" } : {}),
-        }),
-        el("span", {}, [el("strong", {}, "A different place"), el("small", {}, "Describe where you actually found the ID.")]),
-      ]),
-    ]),
-    wizard.locationChoice === "new"
-      ? field("Where did you find it?", "custom-location", wizard.customLocation, "customLocation", "For example, a card inside the SIM slot")
-      : null,
-    field("Device ID from the unit", "device-id", wizard.deviceId, "deviceId", "Paste the ID. Do not invent one."),
-    el("p", { class: "hint" }, "FleetVu matches the unit to this ID when it connects."),
-  ]);
+function serverSentence() {
+  const target = targetFor(state.guide.manufacturer);
+  if (!target) return "Click here to go back and name the company. I need that before I can show the address.";
+  const ports = target.ports.map((port) => `${port.number} in the ${port.deviceField}`).join(", then ");
+  const steps = target.menuSteps.map((step, index) => `${index + 1}. ${step}`).join(" ");
+  return `On the unit, open the server page. Type ${target.address}. Then type ${ports}. This server belongs to FleetVu. Do not type a server of your own. ${steps} When those values are saved on the unit, click here.`;
 }
 
-function locationChoice(location) {
-  const badgeClass = location.successes > 0 ? "badge good" : location.failures > 0 ? "badge bad" : "badge";
-  const tally = `${location.successes} connected · ${location.failures} missed`;
-  return el("label", { class: "choice" }, [
-    el("input", {
-      type: "radio",
-      name: "location",
-      value: location.id,
-      "data-bind": "locationChoice",
-      ...(state.wizard.locationChoice === location.id ? { checked: "checked" } : {}),
-    }),
-    el("span", {}, [
-      el("strong", {}, location.label),
-      el("span", { class: badgeClass }, ` ${location.badge}`),
-      el("small", {}, `${location.detail} ${tally}.`),
-    ]),
-  ]);
+function guideField() {
+  const guide = state.guide;
+  const specs = {
+    maker: ["guide-maker", guide.makerText, "makerText", "Howen, Stonkam, or the name on the unit"],
+    "device-id": ["device-id", guide.deviceId, "deviceId", "Paste the ID from the unit"],
+    found: ["guide-found", guide.locationText, "locationText", "Sticker or device menu"],
+    vehicle: ["asset-name", guide.assetName, "assetName", "Leave blank to use the device ID"],
+    cameras: ["guide-cameras", guide.camerasText, "camerasText", "Road, Driver, Left, Right, Rear, Cargo"],
+  }[guide.phase];
+  if (!specs) return null;
+  const [id, value, bind, placeholder] = specs;
+  return el("input", { id, type: "text", value, "data-bind": bind, placeholder, "aria-label": placeholder });
 }
 
-function stepUnit() {
-  const wizard = state.wizard;
-  return el("div", { class: "stack" }, [
-    field("Vehicle or asset name", "asset-name", wizard.assetName, "assetName", "Optional. If you leave this blank, Tracking uses the device ID."),
-    field("Model", "model", wizard.model, "model", "Optional. Whatever is printed on the unit."),
-    el("div", { class: "stack" }, [
-      el("span", { class: "section-label" }, "Cameras"),
-      el("p", { class: "hint" }, "Road and driver are only a start. Add every camera on the unit."),
-      el("div", { class: "camera-picks" }, ["Left", "Right", "Rear", "Cargo"].map((name) =>
-        el("button", { type: "button", class: "secondary", "data-action": "add-quick-camera", "data-name": name }, name),
-      )),
-      el("div", { class: "row" }, [
-        el("input", {
-          id: "other-camera",
-          type: "text",
-          value: wizard.otherCamera,
-          "data-bind": "otherCamera",
-          placeholder: "Any other camera name",
-          "aria-label": "Any other camera name",
-        }),
-        el("button", { type: "button", class: "secondary", "data-action": "add-other-camera" }, "Add this name"),
-      ]),
-      ...wizard.channels.map((channel, index) => el("div", { class: "row" }, [
-        el("input", { id: `channel-${index}`, type: "text", value: channel, "data-channel": String(index), "aria-label": `Channel ${index + 1}` }),
-        el("button", { type: "button", class: "secondary", "data-action": "remove-channel", "data-index": String(index) }, "Remove"),
-      ])),
-      el("button", { type: "button", class: "secondary", "data-action": "add-channel" }, "Add channel"),
-    ]),
-    field("SIM note", "sim-note", wizard.simNote, "simNote", "Optional. Last four digits, or the carrier name."),
-  ]);
+function plainDetailLocation(text) {
+  const guide = state.guide;
+  const needle = text.trim().toLowerCase();
+  const locations = locationsFor(guide.manufacturer, guide.otherName);
+  return locations.find((location) => location.label.toLowerCase() === needle)
+    || locations.find((location) => needle.includes("sticker") && /sticker|label|nameplate/i.test(location.label))
+    || locations.find((location) => needle.includes("menu") && /menu/i.test(location.label))
+    || null;
 }
 
-function stepServer() {
-  const target = targetFor(state.wizard.manufacturer);
-  if (!target) return el("p", { class: "error" }, "FleetVu has no connection target for that manufacturer.");
-  return el("div", { class: "stack" }, [
-    el("div", { class: "callout" }, target.notice),
-    el("p", {}, "Type these FleetVu values on the device. They are not editable here because you do not choose the server."),
-    readonlyField("FleetVu server address", "server-address", target.address),
-    el("div", { class: "ports" }, target.ports.map((port) => readonlyField(`${port.label} · ${port.deviceField}`, `port-${port.id}`, String(port.number)))),
-    el("div", {}, [
-      el("div", { class: "section-label" }, "On the device"),
-      el("ol", { class: "steps-list" }, target.menuSteps.map((step) => el("li", {}, step))),
-    ]),
-    el("label", { class: "check" }, [
-      el("input", {
-        type: "checkbox",
-        id: "programmed",
-        "data-bind": "programmed",
-        ...(state.wizard.programmed ? { checked: "checked" } : {}),
+async function guideNext() {
+  const guide = state.guide;
+  if (guide.busy) return;
+  guide.error = "";
+  if (guide.phase === "start") {
+    guide.phase = "maker";
+    render();
+    return;
+  }
+  if (guide.phase === "maker") {
+    const parsed = parseMaker(readInput("guide-maker"));
+    if (parsed.error) {
+      guide.error = parsed.error;
+      render();
+      return;
+    }
+    guide.manufacturer = parsed.manufacturer;
+    guide.otherName = parsed.otherName;
+    guide.makerText = parsed.label;
+    guide.phase = "device-id";
+    render();
+    return;
+  }
+  if (guide.phase === "device-id") {
+    guide.deviceId = readInput("device-id");
+    guide.busy = true;
+    render();
+    try {
+      const result = await api("/api/device-id/check-format", {
+        method: "POST",
+        body: JSON.stringify({ deviceId: guide.deviceId }),
+      });
+      guide.deviceId = result.deviceId;
+      guide.phase = "found";
+    } catch (error) {
+      guide.error = error.message;
+    } finally {
+      guide.busy = false;
+      render();
+    }
+    return;
+  }
+  if (guide.phase === "found") {
+    const text = readInput("guide-found").trim();
+    if (text.length < 3) {
+      guide.error = "Type where you found the ID, then click here.";
+      render();
+      return;
+    }
+    const known = plainDetailLocation(text);
+    guide.locationText = text;
+    guide.locationId = known ? known.id : "";
+    guide.customLocation = known ? "" : text;
+    guide.phase = "vehicle";
+    render();
+    return;
+  }
+  if (guide.phase === "vehicle") {
+    guide.assetName = readInput("asset-name").trim();
+    guide.phase = "cameras";
+    render();
+    return;
+  }
+  if (guide.phase === "cameras") {
+    const names = readInput("guide-cameras").split(",").map((name) => name.trim()).filter(Boolean);
+    if (names.length === 0) {
+      guide.error = "Type at least one camera, then click here.";
+      render();
+      return;
+    }
+    guide.camerasText = names.join(", ");
+    guide.channels = names;
+    guide.phase = "server";
+    render();
+    return;
+  }
+  if (guide.phase === "server") {
+    await saveEquipment();
+    return;
+  }
+  if (guide.phase === "check") {
+    await checkConnection();
+    return;
+  }
+  await practiceConnection();
+}
+
+function parseMaker(raw) {
+  const value = String(raw || "").trim();
+  const lower = value.toLowerCase();
+  if (!value) return { error: "Type Howen, Stonkam, or the company name, then click here." };
+  if (lower === "howen") return { manufacturer: "howen", otherName: "", label: "Howen" };
+  if (lower === "stonkam") return { manufacturer: "stonkam", otherName: "", label: "Stonkam" };
+  if (value.length < 2) return { error: "Type the full company name, then click here." };
+  return { manufacturer: "other", otherName: value, label: value };
+}
+
+async function saveEquipment() {
+  const guide = state.guide;
+  guide.busy = true;
+  render();
+  try {
+    const result = await api("/api/equipment", {
+      method: "POST",
+      body: JSON.stringify({
+        manufacturer: guide.manufacturer,
+        otherName: guide.otherName,
+        deviceId: guide.deviceId,
+        locationId: guide.locationId,
+        customLocation: guide.customLocation,
+        assetName: guide.assetName,
+        channels: guide.channels,
       }),
-      el("span", {}, "I entered this FleetVu address and these ports on the device and saved them."),
-    ]),
-  ]);
+    });
+    guide.equipmentId = result.equipment.id;
+    guide.deviceId = result.equipment.deviceId;
+    guide.phase = "check";
+    await reload();
+  } catch (error) {
+    guide.error = error.message;
+  } finally {
+    guide.busy = false;
+    render();
+  }
 }
 
-function stepVerify() {
-  const wizard = state.wizard;
-  const equipment = state.bundle.equipment.find((item) => item.id === wizard.equipmentId);
-  const heard = state.bundle.registrations.filter((entry) => entry.deviceId === wizard.deviceId && entry.manufacturer === wizard.manufacturer).length;
-  return el("div", { class: "stack" }, [
-    el("h2", {}, "Verify the connection"),
-    el("p", {}, `FleetVu will look for a registration from device ID ${wizard.deviceId}. The result is stored on “${equipment?.locationLabel || "the place you named"}” for later ${equipment?.manufacturerLabel || "manufacturer"} customers.`),
-    el("p", { class: "muted" }, `Registrations heard for this device ID: ${heard}.`),
-    wizard.checkMessage
-      ? el("div", { class: wizard.checkOk ? "callout good" : "callout bad", role: "status" }, wizard.checkMessage)
-      : null,
-    el("div", { class: "row" }, [
-      el("button", { type: "button", class: "primary", "data-action": "check", ...(wizard.busy ? { disabled: "true" } : {}) }, "Check connection"),
-    ]),
-    el("div", { class: "callout" }, [
-      el("strong", {}, "Local ingest stand-in"),
-      el("p", {}, "The address above is a placeholder, so a unit in a truck cannot reach this computer. This posts the device ID you already entered to FleetVu's local ingest, the way the unit would register. It does not invent an ID, and it does not make you host a server."),
-      el("button", { type: "button", class: "secondary", "data-action": "stand-in", ...(wizard.busy ? { disabled: "true" } : {}) }, "Post this device ID to the local FleetVu ingest"),
-    ]),
-    wizard.checkOk ? el("a", { class: "primary", href: `#/equipment/${encodeURIComponent(wizard.equipmentId)}` }, "Show it on Tracking") : null,
-  ]);
+async function checkConnection() {
+  const guide = state.guide;
+  guide.busy = true;
+  render();
+  try {
+    const result = await api(`/api/equipment/${guide.equipmentId}/check`, { method: "POST", body: "{}" });
+    await reload();
+    if (result.connected) {
+      location.hash = `#/equipment/${encodeURIComponent(guide.equipmentId)}`;
+      guide.phase = "start";
+      return;
+    }
+    guide.phase = "miss";
+  } catch (error) {
+    guide.error = error.message;
+  } finally {
+    guide.busy = false;
+    render();
+  }
+}
+
+async function practiceConnection() {
+  const guide = state.guide;
+  guide.busy = true;
+  render();
+  try {
+    await api(`/api/equipment/${guide.equipmentId}/stand-in`, { method: "POST", body: "{}" });
+    const result = await api(`/api/equipment/${guide.equipmentId}/check`, { method: "POST", body: "{}" });
+    await reload();
+    if (result.connected) {
+      location.hash = `#/equipment/${encodeURIComponent(guide.equipmentId)}`;
+      return;
+    }
+    guide.error = "Still not connected. Check the ID on the unit, then click here again.";
+  } catch (error) {
+    guide.error = error.message;
+  } finally {
+    guide.busy = false;
+    render();
+  }
 }
 
 function issuesView() {
@@ -462,7 +520,7 @@ function issuesView() {
   return el("section", { class: "panel stack" }, [
     el("div", {}, [
       el("h1", {}, "Issues"),
-      el("p", { class: "lede" }, "Describe a connection or device problem. FleetVu triages what failed, which manufacturer it is, and what to do next."),
+      el("p", { class: "lede" }, "Describe a connection or device problem. FleetVu says what failed, which company made the unit, and what to do next."),
     ]),
     issue.error ? el("p", { class: "error", role: "alert" }, issue.error) : null,
     el("label", { class: "field" }, [
@@ -536,9 +594,8 @@ function aiPanel() {
       el("p", { class: "hint" }, "Ask while you add a unit, or after it is connected."),
     ]),
     el("div", { class: "chat", id: "chat-log" }, state.chat.map((message) => el("div", { class: `bubble ${message.role === "user" ? "user" : "assistant"}` }, message.text))),
-    el("div", { class: "suggest" }, suggestions().map((prompt) => el("button", { type: "button", "data-action": "ask", "data-prompt": prompt, ...(state.chatBusy ? { disabled: "true" } : {}) }, prompt))),
     el("form", { class: "ai-form", id: "ai-form" }, [
-      el("input", { id: "ai-input", type: "text", name: "question", placeholder: "Ask about this step", "aria-label": "Question for AI Support" }),
+      el("input", { id: "ai-input", type: "text", name: "question", placeholder: "Ask a question", "aria-label": "Question for AI Support" }),
       el("button", { class: "primary", type: "submit", ...(state.chatBusy ? { disabled: "true" } : {}) }, "Ask"),
     ]),
   ]);
@@ -552,16 +609,6 @@ function field(label, id, value, bind, hint) {
   ]);
 }
 
-function readonlyField(label, id, value) {
-  return el("label", { class: "field", htmlFor: id }, [
-    label,
-    el("span", { class: "readonly" }, [
-      el("input", { id, type: "text", value, readonly: "readonly" }),
-      el("button", { type: "button", class: "secondary", "data-action": "copy", "data-copy": value }, "Copy"),
-    ]),
-  ]);
-}
-
 async function reload() {
   state.bundle = await api("/api/state");
 }
@@ -569,162 +616,6 @@ async function reload() {
 function readInput(id) {
   const node = document.getElementById(id);
   return node ? node.value : "";
-}
-
-function syncUnitFields() {
-  const wizard = state.wizard;
-  wizard.assetName = readInput("asset-name");
-  wizard.model = readInput("model");
-  wizard.simNote = readInput("sim-note");
-  wizard.otherCamera = readInput("other-camera");
-  document.querySelectorAll("[data-channel]").forEach((input) => {
-    const index = Number(input.dataset.channel);
-    if (Number.isInteger(index)) wizard.channels[index] = input.value;
-  });
-  const typedName = wizard.otherCamera.trim();
-  if (typedName) wizard.channels.push(typedName);
-  wizard.otherCamera = "";
-  wizard.channels = wizard.channels.map((channel) => String(channel ?? "").trim()).filter(Boolean);
-}
-
-async function wizardNext() {
-  const wizard = state.wizard;
-  wizard.formError = "";
-  if (wizard.step === 0) {
-    if (wizard.manufacturer === "other" && wizard.otherName.trim().length < 2) {
-      wizard.formError = "Enter the manufacturer's name.";
-      render();
-      return;
-    }
-    wizard.step = 1;
-    render();
-    return;
-  }
-  if (wizard.step === 1) {
-    if (!wizard.locationChoice) {
-      wizard.formError = "Choose where you found the device ID, or describe the place.";
-      render();
-      return;
-    }
-    if (wizard.locationChoice === "new" && wizard.customLocation.trim().length < 3) {
-      wizard.formError = "Describe the place you found the device ID.";
-      render();
-      return;
-    }
-    wizard.busy = true;
-    render();
-    try {
-      const result = await api("/api/device-id/check-format", {
-        method: "POST",
-        body: JSON.stringify({ deviceId: wizard.deviceId }),
-      });
-      wizard.deviceId = result.deviceId;
-      wizard.step = 2;
-    } catch (error) {
-      wizard.formError = error.message;
-    } finally {
-      wizard.busy = false;
-      render();
-    }
-    return;
-  }
-  if (wizard.step === 2) {
-    syncUnitFields();
-    if (wizard.channels.length === 0) {
-      wizard.formError = "Add at least one camera.";
-      render();
-      document.getElementById("wizard-error")?.scrollIntoView({ block: "center" });
-      return;
-    }
-    wizard.step = 3;
-    render();
-    window.scrollTo(0, 0);
-    return;
-  }
-  if (wizard.step === 3) {
-    if (!wizard.programmed) {
-      wizard.formError = "Confirm that you entered FleetVu's address and ports on the device.";
-      render();
-      return;
-    }
-    await saveEquipment();
-  }
-}
-
-async function saveEquipment() {
-  const wizard = state.wizard;
-  wizard.busy = true;
-  wizard.formError = "";
-  render();
-  const payload = {
-    manufacturer: wizard.manufacturer,
-    otherName: wizard.otherName,
-    deviceId: wizard.deviceId,
-    locationId: wizard.locationChoice === "new" ? "" : wizard.locationChoice,
-    customLocation: wizard.locationChoice === "new" ? wizard.customLocation : "",
-    assetName: wizard.assetName,
-    model: wizard.model,
-    channels: wizard.channels,
-    simNote: wizard.simNote,
-  };
-  try {
-    const path = wizard.equipmentId ? `/api/equipment/${wizard.equipmentId}` : "/api/equipment";
-    const result = await api(path, {
-      method: wizard.equipmentId ? "PATCH" : "POST",
-      body: JSON.stringify(payload),
-    });
-    wizard.equipmentId = result.equipment.id;
-    wizard.locationChoice = result.equipment.locationId;
-    wizard.deviceId = result.equipment.deviceId;
-    wizard.checkMessage = "";
-    wizard.checkOk = null;
-    wizard.step = 4;
-    if (result.equipment.connectTarget.address !== targetFor(wizard.manufacturer).address) {
-      wizard.formError = "FleetVu replaced the server address with its own target.";
-    }
-    await reload();
-  } catch (error) {
-    wizard.formError = error.message;
-  } finally {
-    wizard.busy = false;
-    render();
-  }
-}
-
-async function checkConnection() {
-  const wizard = state.wizard;
-  wizard.busy = true;
-  render();
-  try {
-    const result = await api(`/api/equipment/${wizard.equipmentId}/check`, { method: "POST", body: "{}" });
-    wizard.checkOk = result.connected;
-    wizard.checkMessage = result.message;
-    await reload();
-  } catch (error) {
-    wizard.checkOk = false;
-    wizard.checkMessage = error.message;
-  } finally {
-    wizard.busy = false;
-    render();
-  }
-}
-
-async function standIn() {
-  const wizard = state.wizard;
-  wizard.busy = true;
-  render();
-  try {
-    const result = await api(`/api/equipment/${wizard.equipmentId}/stand-in`, { method: "POST", body: "{}" });
-    wizard.checkMessage = result.note;
-    wizard.checkOk = null;
-    await reload();
-  } catch (error) {
-    wizard.checkMessage = error.message;
-    wizard.checkOk = false;
-  } finally {
-    wizard.busy = false;
-    render();
-  }
 }
 
 async function ask(text) {
@@ -775,37 +666,16 @@ async function submitIssue() {
 
 function onInput(event) {
   const node = event.target;
-  if (node.dataset.channel != null) {
-    state.wizard.channels[Number(node.dataset.channel)] = node.value;
-    return;
-  }
   const bind = node.dataset.bind;
   if (!bind) return;
   if (bind === "issueDescription") state.issue.description = node.value;
   else if (bind === "issueOtherName") state.issue.otherName = node.value;
-  else if (bind === "programmed") state.wizard.programmed = node.checked;
-  else state.wizard[bind] = node.value;
+  else if (state.guide && Object.prototype.hasOwnProperty.call(state.guide, bind)) state.guide[bind] = node.value;
 }
 
 function onChange(event) {
   const node = event.target;
   const bind = node.dataset.bind;
-  if (bind === "manufacturer") {
-    state.wizard.manufacturer = node.value;
-    state.wizard.locationChoice = "";
-    state.wizard.customLocation = "";
-    render();
-    return;
-  }
-  if (bind === "locationChoice") {
-    state.wizard.locationChoice = node.value;
-    render();
-    return;
-  }
-  if (bind === "programmed") {
-    state.wizard.programmed = node.checked;
-    return;
-  }
   if (bind === "issueEquipment") {
     state.issue.equipmentId = node.value;
     const equipment = state.bundle.equipment.find((item) => item.id === node.value);
@@ -828,50 +698,6 @@ async function onClick(event) {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
-  if (action === "wizard-next") return wizardNext();
-  if (action === "wizard-back") {
-    state.wizard.step -= 1;
-    state.wizard.formError = "";
-    render();
-    return;
-  }
-  if (action === "wizard-reset") {
-    state.wizard = freshWizard();
-    render();
-    return;
-  }
-  if (action === "add-channel") {
-    state.wizard.channels.push("");
-    render();
-    return;
-  }
-  if (action === "add-quick-camera") {
-    state.wizard.channels.push(button.dataset.name);
-    state.wizard.formError = "";
-    render();
-    return;
-  }
-  if (action === "add-other-camera") {
-    const name = state.wizard.otherCamera.trim();
-    if (!name) {
-      state.wizard.formError = "Type the camera name, then add it.";
-      render();
-      return;
-    }
-    state.wizard.channels.push(name);
-    state.wizard.otherCamera = "";
-    state.wizard.formError = "";
-    render();
-    return;
-  }
-  if (action === "remove-channel") {
-    state.wizard.channels.splice(Number(button.dataset.index), 1);
-    render();
-    return;
-  }
-  if (action === "check") return checkConnection();
-  if (action === "stand-in") return standIn();
-  if (action === "ask") return ask(button.dataset.prompt);
   if (action === "submit-issue") return submitIssue();
   if (action === "select-unit") {
     location.hash = `#/equipment/${encodeURIComponent(button.dataset.id)}`;
@@ -885,11 +711,6 @@ async function onClick(event) {
       state.issue.otherName = equipment.otherName;
       state.issue.symptom = equipment.status === "connected" ? "cameras-blank" : "never-online";
     }
-    return;
-  }
-  if (action === "copy") {
-    try { await navigator.clipboard.writeText(button.dataset.copy); } catch { /* readonly field is still selectable */ }
-    button.textContent = "Copied";
   }
 }
 
@@ -897,6 +718,11 @@ appEl.addEventListener("input", onInput);
 appEl.addEventListener("change", onChange);
 appEl.addEventListener("click", (event) => { onClick(event); });
 appEl.addEventListener("submit", (event) => {
+  if (event.target.id === "guide-form") {
+    event.preventDefault();
+    guideNext();
+    return;
+  }
   if (event.target.id !== "ai-form") return;
   event.preventDefault();
   const input = document.querySelector("#ai-input");

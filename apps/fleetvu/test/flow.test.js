@@ -110,7 +110,7 @@ test("support and issue triage name the manufacturer and the FleetVu address", a
       context: { manufacturer: "howen", step: 1, screen: "wizard" },
     });
     assert.equal(support.status, 200);
-    assert.match(support.payload.reply, /learning loop/i);
+    assert.doesNotMatch(support.payload.reply, /learning loop/i);
     assert.match(support.payload.reply, /terminal number/);
     assert.match(support.payload.reply, /Do not invent one/);
 
@@ -188,9 +188,11 @@ test("the copy instructions name one start command, port 4173, and the files to 
   }
 });
 
-test("the page calls this the learning loop and does not hard-code ingest ports", async () => {
+test("each onboard step is one Click here and does not hard-code ingest ports", async () => {
   const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
-  assert.match(source, /Learning loop/);
+  assert.match(source, /Click here/);
+  assert.match(source, /This unit is connected\. Click here to add another unit\./);
+  assert.doesNotMatch(source, /Learning loop|local ingest stand-in/);
   assert.doesNotMatch(source, /8900|9100|9200/);
   const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
   assert.match(html, /FleetVu/);

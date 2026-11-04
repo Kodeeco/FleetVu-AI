@@ -58,6 +58,11 @@ legend { font-weight: 700; margin-bottom: 8px; }
   padding: 18px;
   align-items: start;
 }
+.layout-guide {
+  grid-template-columns: minmax(0, 720px);
+  justify-content: center;
+}
+.layout-wide { grid-template-columns: minmax(0, 1fr); }
 .panel, .card, .ai-panel {
   background: var(--card);
   border: 1px solid var(--line);
@@ -112,6 +117,22 @@ textarea { min-height: 90px; resize: vertical; }
 .badge.bad { background: var(--bad-bg); color: var(--bad); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .primary { background: var(--pine); color: white; }
+.pulse {
+  display: inline-block;
+  font-size: 1.35rem;
+  font-weight: 700;
+  padding: 18px 36px;
+  animation: pulse 1.1s ease-in-out infinite;
+}
+.ai-line {
+  font-size: 1.15rem;
+  font-weight: 650;
+  margin: 0;
+}
+@keyframes pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(31, 107, 74, 0.55); }
+  50% { transform: scale(1.06); box-shadow: 0 0 0 14px rgba(31, 107, 74, 0); }
+}
 .secondary { background: white; border-color: var(--line); }
 .ghost { background: transparent; border-color: rgba(255,255,255,0.3); color: white; }
 .primary:disabled, .secondary:disabled { opacity: 0.55; cursor: wait; }

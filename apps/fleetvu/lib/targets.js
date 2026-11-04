@@ -1,5 +1,5 @@
 export const PLACEHOLDER_NOTICE =
-  "Placeholder. FleetVu owns this address and these ports. This local build is not a live ingest host, so a unit on a truck cannot reach it yet. Type the values below on the device exactly as shown. Do not substitute a server of your own.";
+  "FleetVu owns this address and these ports. This copy is not the live FleetVu server yet, so a unit on a truck cannot reach this computer. Type the values below on the device exactly as shown. Do not type a server of your own.";
 
 const HOWEN_STEPS = [
   "On the MDVR, open the network, center, or platform server page.",

@@ -58,7 +58,7 @@ export function answerSupport({ message, context = {}, data }) {
       reply: `FleetVu supplies the server. You type FleetVu's address and ports on the device. You do not host a server and you do not make one up. ${
         resolvedTarget
           ? `For ${label}, the address is ${resolvedTarget.address}. ${resolvedTarget.notice}`
-          : "Pick Howen, Stonkam, or the other manufacturer path and the wizard shows the address."
+          : "Tell me whether the unit is Howen, Stonkam, or another company, and I will show the address."
       }`,
     };
   }
@@ -66,7 +66,7 @@ export function answerSupport({ message, context = {}, data }) {
   if (/port|address|server|ingest|host/.test(q)) {
     if (!resolvedTarget) {
       return {
-        reply: "Open Add equipment and choose a manufacturer. FleetVu then shows the address and ports to type on the device. Those values come from FleetVu, not from you.",
+        reply: "Open Add equipment and tell me who made the unit. I will then show the address and ports to type on it. Those values come from FleetVu, not from you.",
       };
     }
     return {
@@ -76,19 +76,19 @@ export function answerSupport({ message, context = {}, data }) {
 
   if (/device id|sticker|terminal|serial|found the id|which id|where (do i|can i|should i|is the id|did you)/.test(q)) {
     const lead = successful
-      ? `For ${label}, start with locations that already led to a connection. Learning loop: ${locationSummary(locations)}.`
-      : `For ${label}, the device ID location is not confirmed yet. The learning loop starts with the best guess (sticker and device menu): ${locationSummary(locations)}.`;
+      ? `For ${label}, start with ${successful.label}. A unit already connected after the ID was found there.`
+      : `For ${label}, look at the sticker and in the device menu. Those places are not confirmed yet.`;
     const notes = locations.slice(0, 1).map((location) => location.detail).filter(Boolean).join(" ");
     return {
-      reply: `${lead} ${notes} Copy that ID into FleetVu. Do not invent one. FleetVu matches the unit when it connects by that ID. After you point the unit at FleetVu, Check connection records whether that place worked.`,
+      reply: `${lead} ${notes} Copy that ID into FleetVu. Do not invent one. FleetVu matches the unit by that ID when it connects.`,
     };
   }
 
   if (/learning loop|learned|remember/.test(q)) {
     return {
-      reply: `The learning loop is stored memory for each manufacturer. It keeps the place you found the device ID and whether Check connection succeeded or failed. Places that already led to a connection are listed first for the next customer. ${
-        locations.length ? `Currently for ${label}: ${locationSummary(locations)}.` : "Choose a manufacturer to see its memory."
-      } It is not a separate learning service.`,
+      reply: `FleetVu remembers where a ${label} device ID was found and whether that unit then connected. Places that already connected are mentioned first for the next person. ${
+        locations.length ? `So far for ${label}: ${locationSummary(locations)}.` : "Tell me the manufacturer and I can show the places to look."
+      }`,
     };
   }
 
@@ -105,24 +105,27 @@ export function answerSupport({ message, context = {}, data }) {
       ? `Recheck the ID against a location that already connected: ${successful.label}.`
       : "Recheck the ID against the sticker and the device menu, and record where you actually found it.";
     return {
-      reply: `${label} is not matching a registration yet. ${where} Then confirm the unit shows FleetVu's address${
+      reply: `${label} has not connected yet. ${where} Then confirm the unit shows FleetVu's address${
         resolvedTarget ? ` ${resolvedTarget.address}` : ""
-      } and FleetVu's ports, not a server of your own. Run Check connection again. A miss is stored on that location so the next person can see it.`,
+      } and FleetVu's ports, not a server of your own. Tap Check again.`,
     };
   }
 
-  const stepHint = {
-    0: "Choose Howen, Stonkam, or another manufacturer. The rest of the wizard follows that choice.",
-    1: "Copy the device ID from the unit and say where you found it. The learning loop lists confirmed places first.",
-    2: "Name the asset and the cameras on this unit. FleetVu still uses the device ID to recognize the connection.",
-    3: "Type FleetVu's address and ports on the device. They are shown on this step and you cannot edit them.",
-    4: "Check connection asks FleetVu whether a registration with this device ID has arrived. Success and failure are stored with the place you found the ID.",
-  }[context.step];
+  const phaseHint = {
+    maker: "Tap Howen, Stonkam, or Another company.",
+    "other-name": "Type the company name printed on the unit.",
+    "device-id": "Look at the sticker and the device menu, then paste the ID. Do not invent one.",
+    found: "Tap the place where you found the device ID.",
+    vehicle: "Type what you call this vehicle, or skip it. Tracking uses the device ID if you skip.",
+    cameras: "Tap Road, Driver, Left, Right, Rear, or Cargo, or type another camera name. Then say that is every camera.",
+    server: "Type the FleetVu address and ports on the screen into the unit. You do not host a server.",
+    check: "Tap Check. FleetVu looks for the device ID you entered.",
+  }[context.phase];
 
   return {
-    reply: stepHint
-      ? `${stepHint} You can ask where the device ID is, which address to type, or what to do if the unit does not connect.`
-      : "Ask where to find a device ID, which FleetVu address to type on the unit, or report what the connection is doing. Tracking lists units that have already connected.",
+    reply: phaseHint
+      ? `${phaseHint} You can ask where the device ID is, which address to type, or what to do if the unit does not connect.`
+      : "Ask where to find a device ID, which FleetVu address to type on the unit, or what the connection is doing. Tracking lists units that have already connected.",
   };
 }
 
@@ -154,7 +157,7 @@ export function triageIssue({ symptom, description, manufacturer, otherName, equ
       whatFailed = `${label} did not register, so FleetVu has nothing to match${deviceId ? ` to device ID ${deviceId}` : ""}.${where}`;
       nextStep = successful
         ? `Copy the ID again from ${successful.label}, confirm the unit has ${target.address}, then run Check connection.`
-        : `Copy the ID from the sticker or the device menu, tell the learning loop where you found it, enter ${target.address} on the unit, then run Check connection.`;
+        : `Copy the ID from the sticker or the device menu, say where you found it, enter ${target.address} on the unit, then check the connection.`;
       break;
     case "id-mismatch":
       whatFailed = `The ID saved in FleetVu${deviceId ? ` (${deviceId})` : ""} is not the ID the ${label} unit is registering with.${where}`;
@@ -174,7 +177,7 @@ export function triageIssue({ symptom, description, manufacturer, otherName, equ
       break;
     default:
       whatFailed = `${label} problem, as reported: ${clip(description) || "no detail given"}.`;
-      nextStep = `Confirm the device ID, then set the unit to ${target.address}. Run Check connection and read the learning loop result for that location.`;
+      nextStep = `Confirm the device ID, then set the unit to ${target.address}. Check the connection again.`;
   }
 
   return {
