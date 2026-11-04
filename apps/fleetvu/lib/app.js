@@ -454,6 +454,8 @@ export function createApp({ dataFile = defaultDataFile } = {}) {
     return {
       token: invite.token,
       from: "welcome@fleetvulive.com",
+      mailbox: "active",
+      sendingNote: "welcome@fleetvulive.com is an active mailbox. Sending waits on cPanel SMTP settings, so these messages are shown here.",
       submitted: units.length > 0,
       unitCount: units.length,
       connectedCount,
