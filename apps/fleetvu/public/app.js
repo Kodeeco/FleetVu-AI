@@ -239,10 +239,11 @@ function absoluteHash(hash) {
   return `${location.origin}${location.pathname}${hash}`;
 }
 
-function emailCard({ headline, lead, steps, action, href, link }) {
+function emailCard({ from, headline, lead, steps, action, href, link }) {
   return el("article", { class: "email-card" }, [
     el("img", { class: "email-logo", src: "/brand/fleetvu-logo-wordmark.png", alt: "FleetVu" }),
     el("div", { class: "email-rule", role: "presentation" }),
+    el("p", { class: "email-from" }, ["From ", el("span", {}, from)]),
     el("h1", {}, headline),
     el("p", { class: "email-lead" }, lead),
     el("p", { class: "email-label" }, "Getting started"),
@@ -267,35 +268,37 @@ function welcomePage() {
   const token = state.mail.token;
   const setupHash = `#/start/${token}`;
   const joinHash = `#/join/${token}`;
+  const welcomeCard = emailCard({
+    from: state.mail.from || "welcome@fleetvulive.com",
+    headline: "Welcome to FleetVu",
+    lead: "Your video units are not in the app yet. Add them from this email. FleetVu opens the app after the units are connected.",
+    steps: [
+      "Open the token link below.",
+      "Download the Excel template and fill in manufacturer, model, device ID, and IMEI.",
+      "Click Submit. FleetVu creates the units from the file.",
+    ],
+    action: "Open your setup page",
+    href: setupHash,
+    link: absoluteHash(setupHash),
+  });
+  const connectedCard = state.mail.allConnected ? emailCard({
+    from: state.mail.from || "welcome@fleetvulive.com",
+    headline: "All units are connected",
+    lead: "Every unit from your file is connected. Log in, set your credentials, and assign people to regions and locations.",
+    steps: [
+      "All of your units are connected.",
+      "Set your login. Choose the email and password you will use.",
+      "Assign managers, admins, and superadmins to regions and locations.",
+    ],
+    action: "Log in and set up",
+    href: joinHash,
+    link: absoluteHash(joinHash),
+  }) : null;
   const cards = [
     el("p", { class: "mail-note" }, "On-screen mail. Nothing is sent from a mail server."),
-    emailCard({
-      headline: "Welcome to FleetVu",
-      lead: "Your video units are not in the app yet. Add them from this email. FleetVu opens the app after the units are connected.",
-      steps: [
-        "Open the token link below.",
-        "Download the Excel template and fill in manufacturer, model, device ID, and IMEI.",
-        "Click Submit. FleetVu creates the units from the file.",
-      ],
-      action: "Open your setup page",
-      href: setupHash,
-      link: absoluteHash(setupHash),
-    }),
+    connectedCard,
+    welcomeCard,
   ];
-  if (state.mail.allConnected) {
-    cards.push(emailCard({
-      headline: "All units are connected",
-      lead: "Every unit from your file is connected. Log in, set your credentials, and assign people to regions and locations.",
-      steps: [
-        "All of your units are connected.",
-        "Set your login. Choose the email and password you will use.",
-        "Assign managers, admins, and superadmins to regions and locations.",
-      ],
-      action: "Log in and set up",
-      href: joinHash,
-      link: absoluteHash(joinHash),
-    }));
-  }
   cards.push(el("p", { class: "one-unit-link" }, [
     "One unit only. ",
     el("a", { href: "#/add" }, "Open the walkthrough."),

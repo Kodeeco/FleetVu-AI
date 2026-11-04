@@ -227,6 +227,8 @@ test("each onboard step uses Next step and does not hard-code ingest ports", asy
   assert.match(source, /Welcome to FleetVu/);
   assert.match(source, /All units are connected/);
   assert.match(source, /fleetvu-logo-wordmark\.png/);
+  assert.match(source, /welcome@fleetvulive\.com/);
+  assert.doesNotMatch(source, /connected@fleetvulive\.com/);
   assert.doesNotMatch(source, /forensic|keycode|Vault/i);
   const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
   assert.match(html, /FleetVu/);
@@ -240,6 +242,8 @@ test("the welcome email link accepts an Excel template and the connected email w
   await withServer(async (base) => {
     const mail = await fetch(`${base}/api/mail`).then((response) => response.json());
     assert.match(mail.token, /^[a-f0-9]{32}$/);
+    assert.equal(mail.from, "welcome@fleetvulive.com");
+    assert.equal(mail.connectedFrom, undefined);
     assert.equal(mail.allConnected, false);
 
     const template = await fetch(`${base}/api/start/${mail.token}/template.xlsx`);

@@ -224,6 +224,12 @@ ol.steps-list { margin: 0; padding-left: 1.2rem; display: grid; gap: 6px; }
   background: var(--orange);
   border: 0;
 }
+.email-from {
+  margin: 0 0 16px;
+  color: #c5d0dc;
+  font-size: 1rem;
+}
+.email-from span { color: #fff; font-weight: 700; }
 .email-card h1 {
   color: #fff;
   font-size: 1.75rem;

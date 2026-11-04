@@ -453,6 +453,7 @@ export function createApp({ dataFile = defaultDataFile } = {}) {
     const connectedCount = units.filter((item) => item.status === "connected").length;
     return {
       token: invite.token,
+      from: "welcome@fleetvulive.com",
       submitted: units.length > 0,
       unitCount: units.length,
       connectedCount,
