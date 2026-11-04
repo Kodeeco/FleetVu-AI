@@ -253,7 +253,7 @@ function unitDetail(item) {
     connected
       ? el("div", { class: "stack" }, [
           el("p", { class: "ai-line" }, "This unit is connected. Click here to add another unit."),
-          el("a", { class: "primary pulse", href: "#/add" }, "Click here"),
+          el("a", { class: "primary click-next", href: "#/add" }, "Click here"),
         ])
       : null,
     el("h2", {}, item.assetName),
@@ -280,7 +280,7 @@ function guideView() {
       field,
       guide.error ? el("p", { class: "error", role: "alert" }, guide.error) : null,
       el("button", {
-        class: "primary pulse",
+        class: "primary click-next",
         type: "submit",
         ...(guide.busy ? { disabled: "true" } : {}),
       }, "Click here"),
