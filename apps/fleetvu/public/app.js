@@ -13,6 +13,18 @@ const state = {
   join: freshJoin(),
   bulk: { busy: false, message: "", error: "", fileName: "", csv: "" },
   issue: freshIssue(),
+  section: "",
+  sub: "",
+  workDate: "",
+  aiOpen: false,
+  reviewed: {},
+  coached: {},
+  schedules: {},
+  clipRequests: [],
+  clipNote: "",
+  channel: "",
+  scrub: 40,
+  ui: null,
   chat: [
     {
       role: "assistant",
@@ -89,6 +101,10 @@ function el(tag, attrs, children) {
 
 function append(node, child) {
   if (child == null || child === false) return;
+  if (Array.isArray(child)) {
+    for (const item of child) append(node, item);
+    return;
+  }
   node.append(child.nodeType ? child : document.createTextNode(String(child)));
 }
 
@@ -150,17 +166,28 @@ function supportContext() {
   };
 }
 
+function blankRoute(route, token, selectedId) {
+  return { route, token, selectedId, section: "", sub: "" };
+}
+
 function parseHash() {
   const parts = (location.hash.replace(/^#/, "") || "/welcome").split("/").filter(Boolean);
   const token = parts[1] ? decodeURIComponent(parts[1]) : "";
-  if (parts[0] === "start" && token) return { route: "start", token, selectedId: null };
-  if (parts[0] === "join" && token) return { route: "join", token, selectedId: null };
-  if (parts[0] === "welcome" || parts[0] === "mail") return { route: "welcome", token: "", selectedId: null };
-  if (parts[0] === "add") return { route: "add", token: "", selectedId: state.selectedId };
-  if (parts[0] === "issues") return { route: "issues", token: "", selectedId: state.selectedId };
-  if (parts[0] === "equipment" && parts[1]) return { route: "tracking", token: "", selectedId: token };
-  if (parts[0] === "tracking") return { route: "tracking", token: "", selectedId: null };
-  return { route: "welcome", token: "", selectedId: null };
+  if (parts[0] === "start" && token) return blankRoute("start", token, null);
+  if (parts[0] === "join" && token) return blankRoute("join", token, null);
+  if (parts[0] === "welcome" || parts[0] === "mail") return blankRoute("welcome", "", null);
+  if (parts[0] === "add") return blankRoute("add", "", state.selectedId);
+  if (parts[0] === "issues") return blankRoute("issues", "", state.selectedId);
+  if (parts[0] === "equipment" && parts[1]) {
+    return { route: "product", token: "", selectedId: token, section: "track", sub: "units" };
+  }
+  const alias = parts[0] === "tracking" ? "track" : parts[0];
+  const section = (window.FleetVuProduct?.NAV || []).find((item) => item.id === alias);
+  if (section) {
+    const sub = section.subs.some((item) => item.id === parts[1]) ? parts[1] : section.subs[0].id;
+    return { route: "product", token: "", selectedId: state.selectedId, section: section.id, sub };
+  }
+  return blankRoute("welcome", "", null);
 }
 
 function applyRoute() {
@@ -168,6 +195,8 @@ function applyRoute() {
   state.route = next.route;
   state.token = next.token;
   state.selectedId = next.selectedId;
+  state.section = next.section;
+  state.sub = next.sub;
   state.loadError = "";
 }
 
@@ -188,19 +217,31 @@ function render() {
   }
 }
 
-function hideSidePanel() {
-  if (state.route === "add") return true;
-  const selected = selectedEquipment();
-  return state.route === "tracking" && selected?.status === "connected";
+function fleetUi() {
+  if (!state.ui) {
+    state.ui = window.FleetVuProduct.create({
+      el,
+      state,
+      selectedEquipment,
+      unitDetail,
+      render,
+    });
+  }
+  return state.ui;
 }
 
 function shell() {
   if (outsideRoute()) return outsideShell();
-  const panels = [el("main", {}, [state.loadError ? el("p", { class: "error" }, state.loadError) : viewMain()])];
-  if (!hideSidePanel()) panels.push(aiPanel());
-  return el("div", {}, [
-    header(),
-    el("div", { class: state.route === "add" ? "layout layout-guide" : hideSidePanel() ? "layout layout-wide" : "layout" }, panels),
+  const ui = fleetUi();
+  return el("div", { class: "fv-app" }, [
+    ui.rail(),
+    el("div", { class: "fv-stage" }, [
+      ui.topbar(),
+      el("main", { class: "fv-body" }, [
+        state.loadError ? el("p", { class: "error" }, state.loadError) : viewMain(),
+        state.aiOpen && state.route !== "add" ? aiPanel() : null,
+      ]),
+    ]),
   ]);
 }
 
@@ -214,23 +255,6 @@ function outsideShell() {
     ]),
     el("main", { class: "simple-wrap" }, [
       state.loadError ? el("p", { class: "error" }, state.loadError) : state.route === "start" ? startView() : joinView(),
-    ]),
-  ]);
-}
-
-function header() {
-  const link = (hash, label) => {
-    const current = (hash === "#/add" && state.route === "add") || (hash === "#/issues" && state.route === "issues") || (hash === "#/tracking" && state.route === "tracking");
-    return el("a", { href: hash, ...(current ? { "aria-current": "page" } : {}) }, label);
-  };
-  return el("header", { class: "app-header" }, [
-    el("div", { class: "brand" }, [
-      el("img", { class: "wordmark", src: "/brand/fleetvu-logo-wordmark.png", alt: "FleetVu" }),
-    ]),
-    el("nav", { class: "nav", "aria-label": "Primary" }, [
-      link("#/tracking", "Tracking"),
-      link("#/add", "Add equipment"),
-      link("#/issues", "Issues"),
     ]),
   ]);
 }
@@ -375,56 +399,7 @@ function viewMain() {
   if (!state.bundle) return el("section", { class: "panel" }, "Loading FleetVu…");
   if (state.route === "add") return guideView();
   if (state.route === "issues") return issuesView();
-  return trackingView();
-}
-
-function trackingView() {
-  const equipment = state.bundle.equipment;
-  const connected = equipment.filter((item) => item.status === "connected");
-  const waiting = equipment.filter((item) => item.status !== "connected");
-  const selected = selectedEquipment();
-  const onConnectedUnit = selected?.status === "connected";
-  return el("section", { class: "panel" }, [
-    el("div", { class: "panel-head" }, [
-      el("div", {}, [
-        el("h1", {}, "Tracking"),
-        el("p", { class: "lede" }, onConnectedUnit
-          ? "This unit is connected."
-          : "Units that have registered with FleetVu show up here. The device ID is how a registration is matched."),
-      ]),
-      onConnectedUnit ? null : el("a", { class: "primary", href: "#/add" }, "Add equipment"),
-    ]),
-    equipment.length === 0
-      ? el("div", { class: "callout" }, "Nothing is connected yet. Add a unit and I will walk you through it.")
-      : el("div", { class: "stack" }, [
-          unitGroup("Connected", connected, "No unit has connected yet."),
-          unitGroup("Not connected yet", waiting, "No units are waiting."),
-        ]),
-    selected ? unitDetail(selected) : null,
-  ]);
-}
-
-function unitGroup(title, items, empty) {
-  return el("div", {}, [
-    el("div", { class: "section-label" }, title),
-    items.length === 0
-      ? el("p", { class: "muted" }, empty)
-      : el("div", { class: "cards" }, items.map(unitCard)),
-  ]);
-}
-
-function unitCard(item) {
-  return el("button", {
-    class: "unit",
-    type: "button",
-    "data-action": "select-unit",
-    "data-id": item.id,
-    ...(item.id === state.selectedId ? { "aria-current": "true" } : {}),
-  }, [
-    el("strong", {}, item.assetName),
-    el("span", { class: "muted" }, `${item.manufacturerLabel} · device ID ${item.deviceId}`),
-    el("span", { class: statusClass(item.status) }, statusLabel(item.status)),
-  ]);
+  return fleetUi().page();
 }
 
 function statusLabel(status) {
@@ -441,9 +416,10 @@ function statusClass(status) {
 
 function unitDetail(item) {
   const connected = item.status === "connected";
+  const showNext = connected && location.hash.startsWith("#/equipment/");
   const cameras = item.channels.map((channel) => channel.label).join(", ");
   return el("article", { class: "card stack", style: "margin-top:14px;padding:14px" }, [
-    connected
+    showNext
       ? el("div", { class: "paths" }, [
           el("div", { class: "stack bulk-card" }, [
             el("p", { class: "section-label" }, "One unit"),
@@ -937,6 +913,12 @@ function onInput(event) {
     if (person) person[node.dataset.field] = node.value;
     return;
   }
+  if (node.id === "scrub") {
+    state.scrub = Number(node.value);
+    const read = document.getElementById("scrub-read");
+    if (read && window.FleetVuProduct?.clock) read.textContent = window.FleetVuProduct.clock(state.scrub);
+    return;
+  }
   const bind = node.dataset.bind;
   if (bind === "joinEmail") {
     state.join.email = node.value;
@@ -971,6 +953,16 @@ function onChange(event) {
     return;
   }
   if (bind === "issueSymptom") state.issue.symptom = node.value;
+  if (node.id === "work-date") {
+    state.workDate = node.value;
+    render();
+    return;
+  }
+  if (node.id === "scrub") {
+    state.scrub = Number(node.value);
+    render();
+    return;
+  }
   if (node.id === "start-file") {
     const file = node.files?.[0];
     if (!file) return;
@@ -1002,10 +994,21 @@ async function onClick(event) {
   const action = button.dataset.action;
   if (action === "submit-issue") return submitIssue();
   if (action === "bulk-upload") return uploadBulk();
-  if (action === "select-unit") {
-    location.hash = `#/equipment/${encodeURIComponent(button.dataset.id)}`;
+  if (action === "toggle-ai") {
+    state.aiOpen = !state.aiOpen;
+    render();
     return;
   }
+  if (action === "select-unit") {
+    state.selectedId = button.dataset.id;
+    const section = state.section || "track";
+    const sub = state.sub || "units";
+    const next = `#/${section}/${sub}`;
+    if (location.hash !== next) location.hash = next;
+    else render();
+    return;
+  }
+  if (window.FleetVuProduct && fleetUi().handle(action, button)) return;
   if (action === "report-unit") {
     const equipment = state.bundle.equipment.find((item) => item.id === button.dataset.id);
     if (equipment) {

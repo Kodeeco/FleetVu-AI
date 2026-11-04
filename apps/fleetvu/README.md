@@ -27,6 +27,7 @@ Put them in one directory on the server, keeping `lib/` and `public/` as subdire
 - `lib/xlsx.js`
 - `public/index.html`
 - `public/app.js`
+- `public/product.js`
 - `public/styles.css`
 - `public/favicon.svg`
 - `public/brand/fleetvu-logo-wordmark.png`

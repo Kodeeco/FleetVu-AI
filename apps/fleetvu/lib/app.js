@@ -55,6 +55,7 @@ export function createApp({ dataFile = defaultDataFile } = {}) {
       registrations: data.registrations,
       learning: publicLearning(data.learning),
       targets: publicTargets(),
+      account: publicAccount(data),
     });
   });
 
@@ -445,6 +446,21 @@ export function createApp({ dataFile = defaultDataFile } = {}) {
     if (!invite) throw httpError(404, "That setup link is not valid.");
     invite.unitIds ||= [];
     return invite;
+  }
+
+  function publicAccount(data) {
+    const invites = data.invites || [];
+    const invite = invites.find((item) => item.preview && item.account) || invites.find((item) => item.account);
+    if (!invite?.account) return null;
+    return {
+      email: invite.account.email,
+      people: (invite.account.people || []).map((person) => ({
+        name: person.name,
+        role: person.role,
+        region: person.region,
+        location: person.location,
+      })),
+    };
   }
 
   function publicInvite(data, invite) {

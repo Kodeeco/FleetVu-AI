@@ -206,6 +206,7 @@ test("the copy instructions name one start command, port 4173, and the files to 
     "lib/validate.js",
     "public/index.html",
     "public/app.js",
+    "public/product.js",
     "public/styles.css",
     "public/favicon.svg",
     "lib/xlsx.js",
@@ -239,6 +240,24 @@ test("each onboard step uses Next step and does not hard-code ingest ports", asy
   assert.match(styles, /#F16F08/);
   assert.match(styles, /email-card/);
   assert.match(styles, /email-rule/);
+});
+
+test("fleetvuLIVE lists every section and keeps FleetVu's own screen structure", async () => {
+  const source = await readFile(new URL("../public/product.js", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../public/styles.css", import.meta.url), "utf8");
+  for (const id of ["track", "live", "playback", "videos", "journeys", "events", "timeline", "reports", "coaching", "risk", "dashboards", "fleet"]) {
+    assert.match(source, new RegExp(`id: "${id}"`));
+  }
+  for (const label of ["Geofences", "Idle", "Cameras", "Curated", "Speeding", "Fatigue", "Smoking", "Scheduled", "Compliance"]) {
+    assert.match(source, new RegExp(label));
+  }
+  assert.match(source, /fleetvuLIVE/);
+  assert.match(source, /1080p HD/);
+  assert.match(source, /Collision warning/);
+  assert.doesNotMatch(source, /fleetsafe\.ai|Reach New Heights|FleetLive/i);
+  assert.match(styles, /\.fv-rail/);
+  assert.match(styles, /\.fv-map/);
+  assert.match(styles, /#F16F08/);
 });
 
 test("the welcome email link accepts an Excel template and the connected email waits for every unit", async () => {
@@ -323,5 +342,9 @@ test("the welcome email link accepts an Excel template and the connected email w
     const after = await fetch(`${base}/api/state`).then((response) => response.json());
     assert.equal(JSON.stringify(after).includes("passwordHash"), false);
     assert.equal(JSON.stringify(after).includes("fleetvu-local"), false);
+    assert.equal(after.account.email, "ops@fleet.example");
+    assert.equal(JSON.stringify(after.account).includes("password"), false);
+    assert.equal(after.account.people[0].role, "manager");
+    assert.equal(after.account.people[0].region, "West");
   });
 });
