@@ -1,11 +1,16 @@
 const appEl = document.querySelector("#app");
 
 const state = {
-  route: "tracking",
+  route: "welcome",
+  token: "",
   selectedId: null,
   bundle: null,
   loadError: "",
+  mail: null,
+  mailTimer: 0,
   guide: freshGuide(),
+  start: freshStart(),
+  join: freshJoin(),
   bulk: { busy: false, message: "", error: "", fileName: "", csv: "" },
   issue: freshIssue(),
   chat: [
@@ -31,6 +36,26 @@ function freshGuide() {
     camerasText: "Road, Driver, Left, Right, Rear, Cargo",
     channels: [],
     equipmentId: null,
+    busy: false,
+    error: "",
+  };
+}
+
+function freshStart() {
+  return { token: "", info: null, fileName: "", xlsxBase64: "", busy: false, message: "", error: "" };
+}
+
+function freshJoin() {
+  return {
+    token: "",
+    info: null,
+    email: "",
+    password: "",
+    people: [
+      { role: "manager", name: "", region: "", location: "" },
+      { role: "admin", name: "", region: "", location: "" },
+      { role: "superadmin", name: "", region: "", location: "" },
+    ],
     busy: false,
     error: "",
   };
@@ -126,11 +151,28 @@ function supportContext() {
 }
 
 function parseHash() {
-  const parts = (location.hash.replace(/^#/, "") || "/tracking").split("/").filter(Boolean);
-  if (parts[0] === "add") return { route: "add", selectedId: state.selectedId };
-  if (parts[0] === "issues") return { route: "issues", selectedId: state.selectedId };
-  if (parts[0] === "equipment" && parts[1]) return { route: "tracking", selectedId: decodeURIComponent(parts[1]) };
-  return { route: "tracking", selectedId: null };
+  const parts = (location.hash.replace(/^#/, "") || "/welcome").split("/").filter(Boolean);
+  const token = parts[1] ? decodeURIComponent(parts[1]) : "";
+  if (parts[0] === "start" && token) return { route: "start", token, selectedId: null };
+  if (parts[0] === "join" && token) return { route: "join", token, selectedId: null };
+  if (parts[0] === "welcome" || parts[0] === "mail") return { route: "welcome", token: "", selectedId: null };
+  if (parts[0] === "add") return { route: "add", token: "", selectedId: state.selectedId };
+  if (parts[0] === "issues") return { route: "issues", token: "", selectedId: state.selectedId };
+  if (parts[0] === "equipment" && parts[1]) return { route: "tracking", token: "", selectedId: token };
+  if (parts[0] === "tracking") return { route: "tracking", token: "", selectedId: null };
+  return { route: "welcome", token: "", selectedId: null };
+}
+
+function applyRoute() {
+  const next = parseHash();
+  state.route = next.route;
+  state.token = next.token;
+  state.selectedId = next.selectedId;
+  state.loadError = "";
+}
+
+function outsideRoute() {
+  return state.route === "welcome" || state.route === "start" || state.route === "join";
 }
 
 function render() {
@@ -153,11 +195,26 @@ function hideSidePanel() {
 }
 
 function shell() {
+  if (outsideRoute()) return outsideShell();
   const panels = [el("main", {}, [state.loadError ? el("p", { class: "error" }, state.loadError) : viewMain()])];
   if (!hideSidePanel()) panels.push(aiPanel());
   return el("div", {}, [
     header(),
     el("div", { class: state.route === "add" ? "layout layout-guide" : hideSidePanel() ? "layout layout-wide" : "layout" }, panels),
+  ]);
+}
+
+function outsideShell() {
+  if (state.route === "welcome") return welcomePage();
+  return el("div", { class: "simple-page" }, [
+    el("header", { class: "simple-header" }, [
+      el("a", { href: "#/welcome" }, [
+        el("img", { class: "wordmark", src: "/brand/fleetvu-logo-wordmark.png", alt: "FleetVu" }),
+      ]),
+    ]),
+    el("main", { class: "simple-wrap" }, [
+      state.loadError ? el("p", { class: "error" }, state.loadError) : state.route === "start" ? startView() : joinView(),
+    ]),
   ]);
 }
 
@@ -168,14 +225,146 @@ function header() {
   };
   return el("header", { class: "app-header" }, [
     el("div", { class: "brand" }, [
-      el("img", { src: "/favicon.svg", width: "36", height: "36", alt: "" }),
-      el("div", {}, [el("strong", {}, "FleetVu"), el("span", {}, "Add video equipment and connect it")]),
+      el("img", { class: "wordmark", src: "/brand/fleetvu-logo-wordmark.png", alt: "FleetVu" }),
     ]),
     el("nav", { class: "nav", "aria-label": "Primary" }, [
       link("#/tracking", "Tracking"),
       link("#/add", "Add equipment"),
       link("#/issues", "Issues"),
     ]),
+  ]);
+}
+
+function absoluteHash(hash) {
+  return `${location.origin}${location.pathname}${hash}`;
+}
+
+function emailCard({ headline, lead, steps, action, href, link }) {
+  return el("article", { class: "email-card" }, [
+    el("img", { class: "email-logo", src: "/brand/fleetvu-logo-wordmark.png", alt: "FleetVu" }),
+    el("div", { class: "email-rule", role: "presentation" }),
+    el("h1", {}, headline),
+    el("p", { class: "email-lead" }, lead),
+    el("p", { class: "email-label" }, "Getting started"),
+    el("ol", { class: "email-steps" }, steps.map((step, index) => el("li", {}, [
+      el("span", {}, `${index + 1}.`),
+      step,
+    ]))),
+    el("a", { class: "email-button", href }, action),
+    el("p", { class: "email-fallback" }, [
+      "If the button does not work, copy this link into your browser. ",
+      el("a", { href: link }, link),
+    ]),
+  ]);
+}
+
+function welcomePage() {
+  if (!state.mail) {
+    return el("div", { class: "email-stage" }, [
+      el("p", { class: "mail-note" }, state.loadError || "Loading the welcome email…"),
+    ]);
+  }
+  const token = state.mail.token;
+  const setupHash = `#/start/${token}`;
+  const joinHash = `#/join/${token}`;
+  const cards = [
+    el("p", { class: "mail-note" }, "On-screen mail. Nothing is sent from a mail server."),
+    emailCard({
+      headline: "Welcome to FleetVu",
+      lead: "Your video units are not in the app yet. Add them from this email. FleetVu opens the app after the units are connected.",
+      steps: [
+        "Open the token link below.",
+        "Download the Excel template and fill in manufacturer, model, device ID, and IMEI.",
+        "Click Submit. FleetVu creates the units from the file.",
+      ],
+      action: "Open your setup page",
+      href: setupHash,
+      link: absoluteHash(setupHash),
+    }),
+  ];
+  if (state.mail.allConnected) {
+    cards.push(emailCard({
+      headline: "All units are connected",
+      lead: "Every unit from your file is connected. Log in, set your credentials, and assign people to regions and locations.",
+      steps: [
+        "All of your units are connected.",
+        "Set your login. Choose the email and password you will use.",
+        "Assign managers, admins, and superadmins to regions and locations.",
+      ],
+      action: "Log in and set up",
+      href: joinHash,
+      link: absoluteHash(joinHash),
+    }));
+  }
+  cards.push(el("p", { class: "one-unit-link" }, [
+    "One unit only. ",
+    el("a", { href: "#/add" }, "Open the walkthrough."),
+  ]));
+  return el("div", { class: "email-stage" }, cards);
+}
+
+function startView() {
+  const start = state.start;
+  const count = start.info?.unitCount || 0;
+  return el("section", { class: "panel stack" }, [
+    el("h1", {}, "Add your units"),
+    el("p", { class: "lede" }, "Download the Excel template. It walks through manufacturer, model, device ID, and IMEI. Fill one row per unit, then submit. The app stays closed until the units are connected."),
+    el("a", { class: "primary click-next", href: `/api/start/${encodeURIComponent(start.token)}/template.xlsx` }, "Download the Excel template"),
+    count ? el("div", { class: "callout" }, `${count} ${count === 1 ? "unit is" : "units are"} saved. When every unit is connected, the connected email shows in the mailbox.`) : null,
+    el("form", { id: "start-form", class: "stack" }, [
+      el("label", { class: "field" }, [
+        "Filled template",
+        el("input", { id: "start-file", type: "file", accept: ".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "aria-label": "Filled Excel template" }),
+      ]),
+      start.fileName ? el("p", { class: "hint" }, start.fileName) : null,
+      start.error ? el("p", { class: "error", role: "alert" }, start.error) : null,
+      start.message ? el("p", { role: "status" }, start.message) : null,
+      el("button", { class: "primary click-next", type: "submit", ...(start.busy ? { disabled: "true" } : {}) }, "Submit"),
+    ]),
+    el("p", {}, [el("a", { href: "#/welcome" }, "Back to the welcome email")]),
+  ]);
+}
+
+function joinView() {
+  const join = state.join;
+  if (!join.info) return el("section", { class: "panel" }, "Loading…");
+  if (!join.info.allConnected) {
+    return el("section", { class: "panel stack" }, [
+      el("h1", {}, "Not connected yet"),
+      el("p", {}, "This page opens from the connected email, after every unit is connected."),
+      el("a", { href: "#/welcome" }, "Back to your email"),
+    ]);
+  }
+  const roleLabel = { manager: "Manager", admin: "Admin", superadmin: "Superadmin" };
+  return el("section", { class: "panel stack" }, [
+    el("h1", {}, "Set your login"),
+    el("p", { class: "lede" }, "Choose the email and password for FleetVu. Assign a manager, an admin, and a superadmin to a region and a location."),
+    join.error ? el("p", { class: "error", role: "alert" }, join.error) : null,
+    el("form", { id: "join-form", class: "stack" }, [
+      el("label", { class: "field" }, [
+        "Email",
+        el("input", { id: "join-email", type: "text", value: join.email, "data-bind": "joinEmail", autocomplete: "username" }),
+      ]),
+      el("label", { class: "field" }, [
+        "Password",
+        el("input", { id: "join-password", type: "password", value: join.password, "data-bind": "joinPassword", autocomplete: "new-password" }),
+      ]),
+      ...join.people.map((person, index) => el("fieldset", { class: "stack bulk-card" }, [
+        el("legend", {}, roleLabel[person.role]),
+        personInput(index, "name", "Name", person.name),
+        personInput(index, "region", "Region", person.region),
+        personInput(index, "location", "Location", person.location),
+      ])),
+      el("button", { class: "primary click-next", type: "submit", ...(join.busy ? { disabled: "true" } : {}) }, "Save and open FleetVu"),
+    ]),
+  ]);
+}
+
+function personInput(index, field, label, value) {
+  const id = `person-${index}-${field}`;
+  return el("label", { class: "field", htmlFor: id }, [
+    label,
+    el("input", { id, type: "text", value, "data-person": String(index), "data-field": field }),
   ]);
 }
 
@@ -644,6 +833,16 @@ async function reload() {
   state.bundle = await api("/api/state");
 }
 
+function bytesToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const size = 0x8000;
+  for (let index = 0; index < bytes.length; index += size) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + size));
+  }
+  return btoa(binary);
+}
+
 function readInput(id) {
   const node = document.getElementById(id);
   return node ? node.value : "";
@@ -730,7 +929,20 @@ async function submitIssue() {
 
 function onInput(event) {
   const node = event.target;
+  if (node.dataset.person != null && node.dataset.field) {
+    const person = state.join.people[Number(node.dataset.person)];
+    if (person) person[node.dataset.field] = node.value;
+    return;
+  }
   const bind = node.dataset.bind;
+  if (bind === "joinEmail") {
+    state.join.email = node.value;
+    return;
+  }
+  if (bind === "joinPassword") {
+    state.join.password = node.value;
+    return;
+  }
   if (!bind) return;
   if (bind === "issueDescription") state.issue.description = node.value;
   else if (bind === "issueOtherName") state.issue.otherName = node.value;
@@ -756,6 +968,18 @@ function onChange(event) {
     return;
   }
   if (bind === "issueSymptom") state.issue.symptom = node.value;
+  if (node.id === "start-file") {
+    const file = node.files?.[0];
+    if (!file) return;
+    file.arrayBuffer().then((buffer) => {
+      state.start.xlsxBase64 = bytesToBase64(buffer);
+      state.start.fileName = file.name;
+      state.start.error = "";
+      state.start.message = "";
+      render();
+    });
+    return;
+  }
   if (node.id === "bulk-file") {
     const file = node.files?.[0];
     if (!file) return;
@@ -793,12 +1017,103 @@ async function onClick(event) {
 appEl.addEventListener("input", onInput);
 appEl.addEventListener("change", onChange);
 appEl.addEventListener("click", (event) => { onClick(event); });
+async function submitStart(event) {
+  event.preventDefault();
+  const start = state.start;
+  if (!start.xlsxBase64) {
+    start.error = "Choose the filled Excel template.";
+    start.message = "";
+    render();
+    return;
+  }
+  start.busy = true;
+  start.error = "";
+  render();
+  try {
+    const result = await api(`/api/start/${encodeURIComponent(start.token)}/submit`, {
+      method: "POST",
+      body: JSON.stringify({ xlsxBase64: start.xlsxBase64 }),
+    });
+    const units = result.added === 1 ? "unit" : "units";
+    start.message = `Added ${result.added} ${units}.`;
+    if (result.skipped) {
+      const rows = result.skipped === 1 ? "row was" : "rows were";
+      start.message += ` ${result.skipped} ${rows} skipped.`;
+    }
+    start.error = result.errors?.[0] || "";
+    if (result.added > 0) start.message += " When every unit is connected, the connected email shows in the mailbox.";
+    start.info = await api(`/api/start/${encodeURIComponent(start.token)}`);
+  } catch (error) {
+    start.error = error.message;
+    start.message = "";
+  } finally {
+    start.busy = false;
+    render();
+  }
+}
+
+async function submitJoin(event) {
+  event.preventDefault();
+  const join = state.join;
+  join.busy = true;
+  join.error = "";
+  render();
+  try {
+    await api(`/api/start/${encodeURIComponent(join.token)}/join`, {
+      method: "POST",
+      body: JSON.stringify({
+        email: join.email,
+        password: join.password,
+        people: join.people,
+      }),
+    });
+    location.hash = "#/tracking";
+  } catch (error) {
+    join.error = error.message;
+    join.busy = false;
+    render();
+  }
+}
+
+async function loadRouteData() {
+  if (state.route === "welcome") {
+    state.mail = await api("/api/mail");
+    return;
+  }
+  if (state.route === "start") {
+    state.start.token = state.token;
+    state.start.info = await api(`/api/start/${encodeURIComponent(state.token)}`);
+    return;
+  }
+  if (state.route === "join") {
+    state.join.token = state.token;
+    state.join.info = await api(`/api/start/${encodeURIComponent(state.token)}`);
+    return;
+  }
+  await reload();
+}
+
+function watchMail() {
+  window.clearInterval(state.mailTimer);
+  if (state.route !== "welcome") return;
+  state.mailTimer = window.setInterval(() => {
+    if (state.route !== "welcome") return;
+    api("/api/mail").then((mail) => {
+      const changed = !state.mail || mail.allConnected !== state.mail.allConnected || mail.token !== state.mail.token;
+      state.mail = mail;
+      if (changed && state.route === "welcome") render();
+    }).catch(() => {});
+  }, 4000);
+}
+
 appEl.addEventListener("submit", (event) => {
   if (event.target.id === "guide-form") {
     event.preventDefault();
     guideNext();
     return;
   }
+  if (event.target.id === "start-form") return submitStart(event);
+  if (event.target.id === "join-form") return submitJoin(event);
   if (event.target.id !== "ai-form") return;
   event.preventDefault();
   const input = document.querySelector("#ai-input");
@@ -808,19 +1123,23 @@ appEl.addEventListener("submit", (event) => {
 });
 
 window.addEventListener("hashchange", () => {
-  const next = parseHash();
-  state.route = next.route;
-  state.selectedId = next.selectedId;
-  render();
+  applyRoute();
+  loadRouteData()
+    .catch((error) => {
+      state.loadError = error.message;
+    })
+    .finally(() => {
+      render();
+      watchMail();
+    });
 });
 
-reload()
-  .then(() => {
-    const next = parseHash();
-    state.route = next.route;
-    state.selectedId = next.selectedId;
-  })
+applyRoute();
+loadRouteData()
   .catch((error) => {
     state.loadError = error.message;
   })
-  .finally(render);
+  .finally(() => {
+    render();
+    watchMail();
+  });

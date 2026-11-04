@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createApp } from "../lib/app.js";
+import { buildWorkbook, readUnitRows } from "../lib/xlsx.js";
 
 async function withServer(fn) {
   const dir = await mkdtemp(path.join(tmpdir(), "fleetvu-"));
@@ -206,6 +207,10 @@ test("the copy instructions name one start command, port 4173, and the files to 
     "public/app.js",
     "public/styles.css",
     "public/favicon.svg",
+    "lib/xlsx.js",
+    "public/brand/fleetvu-logo-wordmark.png",
+    "public/brand/fleetvu-logo-wordmark-dark.png",
+    "public/brand/fleetvu-logo-mark.png",
   ];
   for (const file of files) {
     assert.match(readme, new RegExp(file.replaceAll(".", "\\.").replaceAll("/", "\\/")));
@@ -219,6 +224,90 @@ test("each onboard step uses Next step and does not hard-code ingest ports", asy
   assert.match(source, /This unit is connected\. The next step is to add another unit\./);
   assert.doesNotMatch(source, /Learning loop|local ingest stand-in/);
   assert.doesNotMatch(source, /8900|9100|9200/);
+  assert.match(source, /Welcome to FleetVu/);
+  assert.match(source, /All units are connected/);
+  assert.match(source, /fleetvu-logo-wordmark\.png/);
+  assert.doesNotMatch(source, /forensic|keycode|Vault/i);
   const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
   assert.match(html, /FleetVu/);
+  const styles = await readFile(new URL("../public/styles.css", import.meta.url), "utf8");
+  assert.match(styles, /#F16F08/);
+  assert.match(styles, /email-card/);
+  assert.match(styles, /email-rule/);
+});
+
+test("the welcome email link accepts an Excel template and the connected email waits for every unit", async () => {
+  await withServer(async (base) => {
+    const mail = await fetch(`${base}/api/mail`).then((response) => response.json());
+    assert.match(mail.token, /^[a-f0-9]{32}$/);
+    assert.equal(mail.allConnected, false);
+
+    const template = await fetch(`${base}/api/start/${mail.token}/template.xlsx`);
+    assert.equal(template.status, 200);
+    const templateBytes = Buffer.from(await template.arrayBuffer());
+    assert.equal(templateBytes[0], 0x50);
+    assert.equal(templateBytes[1], 0x4b);
+    const templateRows = readUnitRows(templateBytes);
+    assert.deepEqual(templateRows[0], ["Manufacturer", "Model", "Device ID", "IMEI"]);
+
+    const early = await post(base, `/api/start/${mail.token}/join`, {
+      email: "ops@fleet.example",
+      password: "fleetvu-local",
+      people: [
+        { role: "manager", name: "Ada North", region: "West", location: "Yard A" },
+        { role: "admin", name: "Ben South", region: "West", location: "Yard A" },
+        { role: "superadmin", name: "Cleo East", region: "East", location: "Depot" },
+      ],
+    });
+    assert.equal(early.status, 409);
+
+    const workbook = buildWorkbook([
+      {
+        name: "Units",
+        rows: [
+          ["Manufacturer", "Model", "Device ID", "IMEI"],
+          ["Howen", "ME41", "HWN-MAIL-1001", "359876543210011"],
+          ["Stonkam", "SV-1", "SK-MAIL-1002", "359876543210022"],
+          ["Howen", "ME41", "test", "359876543210033"],
+        ],
+      },
+    ], 8);
+    const created = await post(base, `/api/start/${mail.token}/submit`, {
+      xlsxBase64: workbook.toString("base64"),
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.payload.added, 2);
+    assert.equal(created.payload.skipped, 1);
+    assert.equal(JSON.stringify(created.payload).includes("passwordHash"), false);
+
+    const state = await fetch(`${base}/api/state`).then((response) => response.json());
+    const saved = state.equipment.filter((item) => item.deviceId.endsWith("1001") || item.deviceId.endsWith("1002"));
+    assert.equal(saved.length, 2);
+    const waiting = await fetch(`${base}/api/mail`).then((response) => response.json());
+    assert.equal(waiting.allConnected, false);
+
+    for (const item of saved) {
+      await post(base, `/api/equipment/${item.id}/stand-in`, {});
+      await post(base, `/api/equipment/${item.id}/check`, {});
+    }
+    const connected = await fetch(`${base}/api/mail`).then((response) => response.json());
+    assert.equal(connected.allConnected, true);
+    assert.equal(connected.unitCount, 2);
+
+    const joined = await post(base, `/api/start/${mail.token}/join`, {
+      email: "ops@fleet.example",
+      password: "fleetvu-local",
+      people: [
+        { role: "manager", name: "Ada North", region: "West", location: "Yard A" },
+        { role: "admin", name: "Ben South", region: "West", location: "Yard A" },
+        { role: "superadmin", name: "Cleo East", region: "East", location: "Depot" },
+      ],
+    });
+    assert.equal(joined.status, 201);
+    assert.equal(joined.payload.email, "ops@fleet.example");
+    assert.equal(JSON.stringify(joined.payload).includes("passwordHash"), false);
+    const after = await fetch(`${base}/api/state`).then((response) => response.json());
+    assert.equal(JSON.stringify(after).includes("passwordHash"), false);
+    assert.equal(JSON.stringify(after).includes("fleetvu-local"), false);
+  });
 });

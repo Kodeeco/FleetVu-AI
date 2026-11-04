@@ -8,6 +8,7 @@ export function createStore(file) {
       equipment: [],
       issues: [],
       registrations: [],
+      invites: [],
       learning: createLearningState(),
     };
   }
@@ -19,6 +20,7 @@ export function createStore(file) {
     parsed.equipment ||= [];
     parsed.issues ||= [];
     parsed.registrations ||= [];
+    parsed.invites ||= [];
     return parsed;
   }
 
