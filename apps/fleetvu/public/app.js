@@ -252,8 +252,8 @@ function unitDetail(item) {
   return el("article", { class: "card stack", style: "margin-top:14px;padding:14px" }, [
     connected
       ? el("div", { class: "stack" }, [
-          el("p", { class: "ai-line" }, "This unit is connected. Click here to add another unit."),
-          el("a", { class: "primary click-next", href: "#/add" }, "Click here"),
+          el("p", { class: "ai-line" }, "This unit is connected. The next step is to add another unit."),
+          el("a", { class: "primary click-next", href: "#/add" }, "Click here. Next step."),
         ])
       : null,
     el("h2", {}, item.assetName),
@@ -283,7 +283,7 @@ function guideView() {
         class: "primary click-next",
         type: "submit",
         ...(guide.busy ? { disabled: "true" } : {}),
-      }, "Click here"),
+      }, "Click here. Next step."),
     ]),
   ]);
 }
@@ -291,15 +291,15 @@ function guideView() {
 function guideSentence() {
   const guide = state.guide;
   const maker = displayLabel(guide.manufacturer, guide.otherName);
-  if (guide.phase === "start") return "Click here to name the company that made this camera unit.";
-  if (guide.phase === "maker") return "Type Howen, Stonkam, or the company name printed on the unit, then click here.";
+  if (guide.phase === "start") return "The next step is to name the company that made this camera unit.";
+  if (guide.phase === "maker") return "Type Howen, Stonkam, or the company name printed on the unit.";
   if (guide.phase === "device-id") return idSentence();
-  if (guide.phase === "found") return `Type where you found that ID, such as the sticker or the device menu, then click here. I will remember it for the next ${maker} unit.`;
-  if (guide.phase === "vehicle") return "Type what you call this vehicle, or leave it blank, then click here. A blank name uses the device ID.";
-  if (guide.phase === "cameras") return "Type every camera, separated by commas. Road, Driver, Left, Right, Rear, Cargo, or any other name. Then click here.";
+  if (guide.phase === "found") return `Type where you found that ID, such as the sticker or the device menu. I will remember it for the next ${maker} unit.`;
+  if (guide.phase === "vehicle") return "Type what you call this vehicle, or leave it blank. A blank name uses the device ID.";
+  if (guide.phase === "cameras") return "Type every camera, separated by commas. Road, Driver, Left, Right, Rear, Cargo, or any other name.";
   if (guide.phase === "server") return serverSentence();
-  if (guide.phase === "check") return `Click here and I will look for device ID ${guide.deviceId}.`;
-  return `This computer is not the live FleetVu server, so a unit in a truck cannot reach it. Click here to record a practice connection for ${guide.deviceId} and check again. I will not invent an ID.`;
+  if (guide.phase === "check") return `The next step is to look for device ID ${guide.deviceId}.`;
+  return `This computer is not the live FleetVu server, so a unit in a truck cannot reach it. The next step records a practice connection for ${guide.deviceId} and checks again. I will not invent an ID.`;
 }
 
 function idSentence() {
@@ -311,15 +311,15 @@ function idSentence() {
     ? `On a ${maker} unit, start at ${worked.label}. A unit already connected when the ID was found there.`
     : `On a ${maker} unit, look at the sticker and in the device menu.`;
   const detail = String(locations[0]?.detail || "").replace(/^Best guess, not a confirmed location\.\s*/i, "");
-  return `${lead} ${detail} Paste that ID, then click here. Do not invent one.`;
+  return `${lead} ${detail} Paste that ID. Do not invent one.`;
 }
 
 function serverSentence() {
   const target = targetFor(state.guide.manufacturer);
-  if (!target) return "Click here to go back and name the company. I need that before I can show the address.";
+  if (!target) return "The next step is to go back and name the company. I need that before I can show the address.";
   const ports = target.ports.map((port) => `${port.number} in the ${port.deviceField}`).join(", then ");
   const steps = target.menuSteps.map((step, index) => `${index + 1}. ${step}`).join(" ");
-  return `On the unit, open the server page. Type ${target.address}. Then type ${ports}. This server belongs to FleetVu. Do not type a server of your own. ${steps} When those values are saved on the unit, click here.`;
+  return `On the unit, open the server page. Type ${target.address}. Then type ${ports}. This server belongs to FleetVu. Do not type a server of your own. ${steps} The next step is to check the connection after those values are saved on the unit.`;
 }
 
 function guideField() {
@@ -391,7 +391,7 @@ async function guideNext() {
   if (guide.phase === "found") {
     const text = readInput("guide-found").trim();
     if (text.length < 3) {
-      guide.error = "Type where you found the ID, then click here.";
+      guide.error = "Type where you found the ID.";
       render();
       return;
     }
@@ -412,7 +412,7 @@ async function guideNext() {
   if (guide.phase === "cameras") {
     const names = readInput("guide-cameras").split(",").map((name) => name.trim()).filter(Boolean);
     if (names.length === 0) {
-      guide.error = "Type at least one camera, then click here.";
+      guide.error = "Type at least one camera.";
       render();
       return;
     }
@@ -436,10 +436,10 @@ async function guideNext() {
 function parseMaker(raw) {
   const value = String(raw || "").trim();
   const lower = value.toLowerCase();
-  if (!value) return { error: "Type Howen, Stonkam, or the company name, then click here." };
+  if (!value) return { error: "Type Howen, Stonkam, or the company name." };
   if (lower === "howen") return { manufacturer: "howen", otherName: "", label: "Howen" };
   if (lower === "stonkam") return { manufacturer: "stonkam", otherName: "", label: "Stonkam" };
-  if (value.length < 2) return { error: "Type the full company name, then click here." };
+  if (value.length < 2) return { error: "Type the full company name." };
   return { manufacturer: "other", otherName: value, label: value };
 }
 
@@ -505,7 +505,7 @@ async function practiceConnection() {
       location.hash = `#/equipment/${encodeURIComponent(guide.equipmentId)}`;
       return;
     }
-    guide.error = "Still not connected. Check the ID on the unit, then click here again.";
+    guide.error = "Still not connected. Check the ID on the unit, then try the next step again.";
   } catch (error) {
     guide.error = error.message;
   } finally {

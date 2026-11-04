@@ -1,10 +1,10 @@
 # FleetVu
 
-Customers add their own video equipment and connect it to FleetVu. Add equipment is one instruction at a time, then Click here. It covers Howen, Stonkam, and any other manufacturer. FleetVu shows the server address and ports to type on the device. The customer copies the device ID from the unit.
+Customers add their own video equipment and connect it to FleetVu. Add equipment is one instruction at a time, then Next step. It covers Howen, Stonkam, and any other manufacturer. FleetVu shows the server address and ports to type on the device. The customer copies the device ID from the unit.
 
 FleetVu remembers, for each manufacturer, where that ID was found and whether the unit then connected. Places that already connected are mentioned first. The memory is stored in this app.
 
-After a unit connects, the screen names that unit and the next step is Click here to add another unit. Issues takes a connection or device report and returns what failed, the manufacturer, and what to do next.
+After a unit connects, the screen names that unit and the next step adds another unit. Issues takes a connection or device report and returns what failed, the manufacturer, and what to do next.
 
 This directory is the whole app. It does not use the repository root, and it has no GitHub Pages, Vercel, or Netlify configuration. Copy it onto a server you control.
 
@@ -50,4 +50,4 @@ FleetVu listens on port **4173**. Open `http://<your-server>:4173`. Set `PORT` t
 
 The Howen, Stonkam, and other-manufacturer addresses and ports are FleetVu's. This build is not the live server, and `.invalid` hosts are not reachable from a truck. The check looks for a registration of the device ID you entered. Until one arrives, the result is a miss, and FleetVu remembers the place you found the ID.
 
-If you are trying the steps on this computer, Click here records a practice connection for the device ID already entered, then checks again. It does not invent an ID and it is not a server you host.
+If you are trying the steps on this computer, the next step records a practice connection for the device ID already entered, then checks again. It does not invent an ID and it is not a server you host.

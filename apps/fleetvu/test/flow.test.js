@@ -188,10 +188,10 @@ test("the copy instructions name one start command, port 4173, and the files to 
   }
 });
 
-test("each onboard step is one Click here and does not hard-code ingest ports", async () => {
+test("each onboard step uses Next step and does not hard-code ingest ports", async () => {
   const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
-  assert.match(source, /Click here/);
-  assert.match(source, /This unit is connected\. Click here to add another unit\./);
+  assert.match(source, /Click here\. Next step\./);
+  assert.match(source, /This unit is connected\. The next step is to add another unit\./);
   assert.doesNotMatch(source, /Learning loop|local ingest stand-in/);
   assert.doesNotMatch(source, /8900|9100|9200/);
   const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
